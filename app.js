@@ -157,20 +157,8 @@ function statusDinamis(invoice, totalTerpakai, sisaUtang = Number(invoice.total_
   if (sisaUtang <= 0.009) return { label: 'LUNAS', cls: 'lunas' };
 
   const sisaHari = diffDays(invoice.tanggal_jatuh_tempo);
-  const { diskonBertingkat, diskonPersen, diskonHari } = parseSyaratPembayaran(invoice.syarat_pembayaran);
-  const parsed = parseSyaratPembayaran(invoice.syarat_pembayaran);
-  const tanggalAcuanDiskon = parsed.hasEom
-    ? hitungTanggalJatuhTempo(invoice.tanggal_faktur, { jatuhTempoMode: 'eom' })
-    : invoice.tanggal_faktur;
-  const hariSejakFaktur = -diffDays(tanggalAcuanDiskon);
-
   if (sisaHari < 0) return { label: 'JATUH TEMPO', cls: 'jatuh_tempo' };
-  const tier = diskonBertingkat.find(item => hariSejakFaktur >= 0 && hariSejakFaktur <= item.diskonHari);
-  const rate = tier?.diskonPersen || diskonPersen;
-  const days = tier?.diskonHari || diskonHari;
-  if (rate > 0 && hariSejakFaktur >= 0 && hariSejakFaktur <= days) {
-    return { label: `DISKON ${rate}% (≤${days}hr)`, cls: 'diskon' };
-  }
+
   return { label: 'AKTIF', cls: 'aktif' };
 }
 
