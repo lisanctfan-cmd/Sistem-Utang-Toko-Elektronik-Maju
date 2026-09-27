@@ -103,16 +103,16 @@ function bindTabs() {
 async function loadSuppliers() {
   if (!ensureSupabaseReady()) return;
 
-  const { data, error } = await db.from('suppliers').select('*').order('id', { ascending: false });
+  const { data, error } = await db.from('suppliers').select('*').order('id', { ascending: true });
   if (error) return toast('Gagal load supplier: ' + error.message, 'error');
   loadedSuppliers = data;
 
   const tbody = document.querySelector('#tabel-supplier tbody');
   tbody.innerHTML = data.map(s => `
     <tr>
-      <td>${s.id}</td><td>${s.nama}</td><td>${s.kontak || '-'}</td><td>${s.alamat || '-'}</td>
+      <td><strong>${s.nama}</strong></td><td>${s.kontak || '-'}</td><td>${s.alamat || '-'}</td>
       <td><button class="btn-sm" onclick="editSupplier(${s.id})">Edit</button> <button class="btn-danger btn-sm" onclick="hapusSupplier(${s.id})">Hapus</button></td>
-    </tr>`).join('') || '<tr><td colspan="5" style="text-align:center">Belum ada supplier</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="4" style="text-align:center">Belum ada supplier</td></tr>';
 
   const sel = document.getElementById('inv-supplier');
   sel.innerHTML = '<option value="">-- Pilih Supplier --</option>' +
