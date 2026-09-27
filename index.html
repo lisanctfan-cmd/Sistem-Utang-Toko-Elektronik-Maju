@@ -105,7 +105,7 @@
         </label>
         <input type="number" id="inv-total" placeholder="Total (Rp)" step="0.01" required>
         <label>Syarat Pembayaran
-          <input type="text" id="inv-syarat" placeholder="Contoh: 2/10 n/30">
+          <input type="text" id="inv-syarat" placeholder="Syarat pembayaran">
         </label>
         <textarea id="inv-keterangan" placeholder="Keterangan (opsional)" class="span-full"></textarea>
         <div class="form-actions span-full">
@@ -271,21 +271,7 @@
 
 <div id="toast" class="toast"></div>
 
-<script>
-  function activateTab(tabName) {
-    const tabButton = document.querySelector(`.tab[data-tab="${tabName}"]`);
-    const tabPanel = document.getElementById(tabName);
-    if (!tabButton || !tabPanel) return;
 
-    document.querySelectorAll('.tab').forEach(btn => btn.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(section => section.classList.remove('active'));
-
-    tabButton.classList.add('active');
-    tabPanel.classList.add('active');
-  }
-
-  window.activateTab = activateTab;
-</script>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>

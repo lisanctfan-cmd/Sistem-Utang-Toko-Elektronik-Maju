@@ -13,6 +13,17 @@
  */
 function parseSyaratPembayaran(syarat) {
   const clean = (syarat || '').trim().toLowerCase().replace(/,/g, ' ').replace(/\s+/g, ' ');
+  if (!clean) {
+    return {
+      diskonPersen: 0,
+      diskonHari: 0,
+      diskonBertingkat: [],
+      netHari: 0,
+      hasEom: false,
+      jatuhTempoMode: 'invoice_days',
+      format: ''
+    };
+  }
   const diskonBertingkat = [...clean.matchAll(/(\d+(?:[.,]\d+)?)\s*\/\s*(\d+)/g)]
     .map(match => ({ diskonPersen: Number(match[1].replace(',', '.')), diskonHari: parseInt(match[2], 10) }));
   const percentMatch = clean.match(/(\d+(?:[.,]\d+)?)\s*%/);
@@ -26,7 +37,7 @@ function parseSyaratPembayaran(syarat) {
   if (diskonPersen > 0 && diskonHari > 0 && diskonBertingkat.length === 0) {
     diskonBertingkat.push({ diskonPersen, diskonHari });
   }
-  const netHari = netMatch ? parseInt(netMatch[1], 10) : dueDaysMatch ? parseInt(dueDaysMatch[1], 10) : (hasEom || immediate ? 0 : 30);
+  const netHari = netMatch ? parseInt(netMatch[1], 10) : dueDaysMatch ? parseInt(dueDaysMatch[1], 10) : (hasEom || immediate ? 0 : 0);
   const jatuhTempoMode = hasEom ? (netMatch ? 'days_after_eom' : 'eom') : 'invoice_days';
 
   return {
@@ -36,7 +47,7 @@ function parseSyaratPembayaran(syarat) {
     netHari,
     hasEom,
     jatuhTempoMode,
-    format: clean || 'n/30'
+    format: clean
   };
 }
 

@@ -36,6 +36,13 @@ function toast(msg, type = '') {
   setTimeout(() => t.className = 'toast ' + type, 2500);
 }
 
+function formatSyarat(syarat) {
+  if (!syarat) return '-';
+  const clean = String(syarat).trim();
+  if (!clean || clean === '-' || clean.toLowerCase() === 'null' || clean.toLowerCase() === 'undefined') return '-';
+  return clean;
+}
+
 function todayStr() {
   return tanggalHariIni();
 }
@@ -181,7 +188,7 @@ document.getElementById('form-invoice').addEventListener('submit', async (e) => 
   e.preventDefault();
   if (!ensureSupabaseReady()) return;
 
-  const syarat = document.getElementById('inv-syarat').value.trim() || 'n/30';
+  const syarat = document.getElementById('inv-syarat').value.trim();
   const parsed = parseSyaratPembayaran(syarat);
   const tglFaktur = document.getElementById('inv-tanggal').value;
   const jatuhTempo = document.getElementById('inv-jatuh-tempo').value;
@@ -193,10 +200,10 @@ document.getElementById('form-invoice').addEventListener('submit', async (e) => 
     tanggal_faktur: tglFaktur,
     tanggal_jatuh_tempo: jatuhTempo,
     total_amount: parseFloat(document.getElementById('inv-total').value),
-    syarat_pembayaran: syarat,
-    diskon_persen: parsed.diskonPersen,
-    diskon_hari: parsed.diskonHari,
-    net_hari: parsed.netHari,
+    syarat_pembayaran: syarat || null,
+    diskon_persen: parsed.diskonPersen || 0,
+    diskon_hari: parsed.diskonHari || 0,
+    net_hari: parsed.netHari || null,
     keterangan: document.getElementById('inv-keterangan').value.trim() || null
   };
 
@@ -232,7 +239,7 @@ async function editInvoice(id) {
   document.getElementById('inv-tanggal').value = invoice.tanggal_faktur;
   document.getElementById('inv-jatuh-tempo').value = invoice.tanggal_jatuh_tempo;
   document.getElementById('inv-total').value = invoice.total_amount;
-  document.getElementById('inv-syarat').value = invoice.syarat_pembayaran;
+  document.getElementById('inv-syarat').value = invoice.syarat_pembayaran || '';
   document.getElementById('inv-keterangan').value = invoice.keterangan || '';
 
   document.getElementById('btn-save-invoice').textContent = 'Perbarui Faktur';
@@ -271,7 +278,7 @@ async function loadInvoices() {
         <td>${formatTanggal(inv.tanggal_faktur)}</td>
         <td>${formatTanggal(inv.tanggal_jatuh_tempo)}</td>
         <td>${formatRp(inv.total_amount)}</td>
-        <td>${inv.syarat_pembayaran}</td>
+        <td>${formatSyarat(inv.syarat_pembayaran)}</td>
         <td>${formatRp(sisa)}</td>
         <td><span class="badge ${st.cls}">${st.label}</span></td>
         <td><button class="btn-sm" onclick="editInvoice(${inv.id})">Edit</button> <button class="btn-danger btn-sm" onclick="hapusInvoice(${inv.id})">Hapus</button></td>
@@ -334,7 +341,7 @@ function renderPaymentInfo() {
     No. faktur: ${invoice.nomor_faktur}<br>
     Total: ${formatRp(invoice.total_amount)} | Dibayar: ${formatRp(dibayar)} | Sisa: <b>${formatRp(sisa)}</b><br>
     Jatuh tempo: ${formatTanggal(invoice.tanggal_jatuh_tempo)} (${sisaHari >= 0 ? sisaHari + ' hari lagi' : 'TERLAMBAT ' + Math.abs(sisaHari) + ' hari'})<br>
-    Syarat: <b>${invoice.syarat_pembayaran || '-'}</b>${diskonInfo}
+    Syarat: <b>${formatSyarat(invoice.syarat_pembayaran)}</b>${diskonInfo}
   `;
   infoBox.hidden = false;
 }
@@ -776,7 +783,7 @@ async function loadLaporan() {
         <td>${formatRp(totalDiskon)}</td>
         <td>${formatRp(totalDenda)}</td>
         <td><strong>${formatRp(sisa)}</strong></td>
-        <td>${inv.syarat_pembayaran}</td>
+        <td>${formatSyarat(inv.syarat_pembayaran)}</td>
         <td><span class="badge ${st.cls}">${st.label}</span></td>
         <td>${sisaHari}</td>
         <td style="${hariLewatTempo > 0 ? 'color:red; font-weight:bold;' : ''}">${hariLewatTempo}</td>
@@ -879,7 +886,7 @@ document.getElementById('btn-export')?.addEventListener('click', async () => {
         <td style="border: 1px solid #cbd5e1; padding: 7px; text-align: right; mso-number-format:'\\#\\,\\#\\#0';">${Math.round(totalDiskon)}</td>
         <td style="border: 1px solid #cbd5e1; padding: 7px; text-align: right; mso-number-format:'\\#\\,\\#\\#0';">${Math.round(totalDenda)}</td>
         <td style="border: 1px solid #cbd5e1; padding: 7px; text-align: right; font-weight: bold; mso-number-format:'\\#\\,\\#\\#0';">${Math.round(sisa)}</td>
-        <td style="border: 1px solid #cbd5e1; padding: 7px; text-align: center;">${inv.syarat_pembayaran || '-'}</td>
+        <td style="border: 1px solid #cbd5e1; padding: 7px; text-align: center;">${formatSyarat(inv.syarat_pembayaran)}</td>
         <td style="border: 1px solid #cbd5e1; padding: 7px; text-align: center; background-color: ${statusBg}; color: ${statusColor}; font-weight: bold;">${st.label}</td>
         <td style="border: 1px solid #cbd5e1; padding: 7px; text-align: center;">${sisaHari}</td>
         <td style="border: 1px solid #cbd5e1; padding: 7px; text-align: center; ${hariLewatTempo > 0 ? 'color: red; font-weight: bold;' : ''}">${hariLewatTempo}</td>

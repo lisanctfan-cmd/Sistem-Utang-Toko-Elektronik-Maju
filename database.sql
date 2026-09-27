@@ -1,29 +1,39 @@
--- 1. Tambah kolom bukti_url pada tabel invoices dan payments jika belum ada
-ALTER TABLE invoices ADD COLUMN IF NOT EXISTS bukti_url TEXT;
-ALTER TABLE payments ADD COLUMN IF NOT EXISTS bukti_url TEXT;
+-- ============================================================
+-- SQL UNTUK SUPABASE (JALANKAN DI SQL EDITOR)
+-- ============================================================
 
--- 2. Tabel attachments (opsional untuk riwayat lampiran)
-DROP TABLE IF EXISTS attachments CASCADE;
-CREATE TABLE attachments (
-    id BIGSERIAL PRIMARY KEY,
-    related_type VARCHAR(20) NOT NULL,
-    related_id BIGINT NOT NULL,
-    file_name VARCHAR(255) NOT NULL,
-    file_type VARCHAR(50),
-    file_size INTEGER,
-    storage_path TEXT NOT NULL,
-    public_url TEXT NOT NULL,
-    uploaded_at TIMESTAMPTZ DEFAULT NOW()
-);
-CREATE INDEX idx_attachments_related ON attachments(related_type, related_id);
+-- 1. Buat kolom syarat_pembayaran & diskon bersifat fleksibel / opsional (boleh NULL atau bernilai '-')
+ALTER TABLE invoices ALTER COLUMN syarat_pembayaran DROP NOT NULL;
+ALTER TABLE invoices ALTER COLUMN syarat_pembayaran SET DEFAULT '-';
 
--- 3. Matikan RLS semua tabel (biar simpel, tanpa login)
-ALTER TABLE suppliers   DISABLE ROW LEVEL SECURITY;
-ALTER TABLE invoices    DISABLE ROW LEVEL SECURITY;
-ALTER TABLE payments    DISABLE ROW LEVEL SECURITY;
-ALTER TABLE attachments DISABLE ROW LEVEL SECURITY;
+ALTER TABLE invoices ALTER COLUMN net_hari DROP NOT NULL;
+ALTER TABLE invoices ALTER COLUMN net_hari SET DEFAULT 0;
 
--- 4. Buat bucket storage 'bukti'
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('bukti', 'bukti', true)
-ON CONFLICT (id) DO UPDATE SET public = true;
+ALTER TABLE invoices ALTER COLUMN diskon_persen DROP NOT NULL;
+ALTER TABLE invoices ALTER COLUMN diskon_persen SET DEFAULT 0;
+
+ALTER TABLE invoices ALTER COLUMN diskon_hari DROP NOT NULL;
+ALTER TABLE invoices ALTER COLUMN diskon_hari SET DEFAULT 0;
+
+ALTER TABLE invoices ALTER COLUMN keterangan DROP NOT NULL;
+
+-- 2. Pastikan tabel payments juga fleksibel
+ALTER TABLE payments ALTER COLUMN diskon_didapat DROP NOT NULL;
+ALTER TABLE payments ALTER COLUMN diskon_didapat SET DEFAULT 0;
+
+ALTER TABLE payments ALTER COLUMN denda_dikenakan DROP NOT NULL;
+ALTER TABLE payments ALTER COLUMN denda_dikenakan SET DEFAULT 0;
+
+ALTER TABLE payments ALTER COLUMN keterangan DROP NOT NULL;
+
+-- 3. Matikan Row Level Security (RLS) agar penyimpanan dari web tidak pernah diblokir
+ALTER TABLE suppliers DISABLE ROW LEVEL SECURITY;
+ALTER TABLE invoices  DISABLE ROW LEVEL SECURITY;
+ALTER TABLE payments  DISABLE ROW LEVEL SECURITY;
+
+-- 4. Berikan hak akses penuh ke role anon dan authenticated
+GRANT ALL ON TABLE suppliers TO anon, authenticated, service_role;
+GRANT ALL ON TABLE invoices  TO anon, authenticated, service_role;
+GRANT ALL ON TABLE payments  TO anon, authenticated, service_role;
+
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
