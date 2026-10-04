@@ -31,15 +31,13 @@ jobs:
 
       - name: Prepare website
         run: |
-          mkdir -p _site/backend
-          cp -R frontend/. _site/
-          cp backend/app.js _site/backend/app.js
-          sed -i 's|../backend/app.js|./backend/app.js|' _site/index.html
+          cp -R frontend/. .
+          sed -i 's|../backend/app.js|./backend/app.js|' index.html
 
       - name: Upload website
         uses: actions/upload-pages-artifact@v3
         with:
-          path: "./_site"
+          path: "."
 
       - name: Deploy to GitHub Pages
         id: deployment
