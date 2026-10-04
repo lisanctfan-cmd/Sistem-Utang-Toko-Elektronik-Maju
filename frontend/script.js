@@ -366,10 +366,10 @@ function renderPaymentInfo() {
   const sisaHari = diffDays(invoice.tanggal_jatuh_tempo);
   const diskonInfo = !disk || parsedTerms.diskonBertingkat.length === 0
     ? ''
-    : disk.berhak
-      ? `<br>Diskon yang dapat dipakai: <b>${formatRp(disk.diskonRp)}</b> (${disk.diskonPersen}%)`
-      : disk.menungguPelunasan
-        ? '<br>Diskon akan dihitung pada cicilan terakhir saat faktur lunas.'
+    : disk.menungguJumlahBayar
+      ? `<br>Diskon ${disk.diskonPersen}% berlaku pada nominal utang yang dilunasi selama periode syarat.`
+      : disk.berhak
+        ? `<br>Utang dilunasi: <b>${formatRp(disk.nominalUtangDilunasi)}</b> | Diskon: <b>${formatRp(disk.diskonRp)}</b> (${disk.diskonPersen}%)`
         : '<br>Pembayaran tidak berada pada periode diskon.';
 
   infoBox.innerHTML = `

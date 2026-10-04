@@ -107,7 +107,7 @@ function formatTanggal(str) {
 
 /**
  * Hitung diskon yang berhak didapat jika bayar pada tanggal tertentu.
- * Return: { berhak: bool, diskonRp: number, sisaSetelahDiskon: number, hariKe: number }
+ * Return: nominal pokok yang dilunasi, diskon, dan saldo setelah pembayaran.
  */
 function hitungDiskon(invoice, tanggalBayar, sisaUtang = invoice.total_amount, jumlahBayar = null) {
   const parsed = parseSyaratPembayaran(invoice.syarat_pembayaran);
@@ -125,31 +125,46 @@ function hitungDiskon(invoice, tanggalBayar, sisaUtang = invoice.total_amount, j
     const sisaSebelum = Math.max(0, Number(sisaUtang) || 0);
     const diskonPenuh = Math.round(sisaSebelum * tarif * 100) / 100;
     const bayar = jumlahBayar === null ? null : Math.max(0, Number(jumlahBayar) || 0);
-    const bayarUntukLunas = Math.round((sisaSebelum - diskonPenuh) * 100) / 100;
-    const melunasiDenganDiskon = bayar !== null && Math.abs(bayar - bayarUntukLunas) <= 0.01;
-    if (!melunasiDenganDiskon) {
+    if (bayar === null) {
       return {
-        berhak: false,
+        berhak: true,
         diskonRp: 0,
-        sisaSetelahDiskon: Math.max(0, Math.round((sisaSebelum - (bayar || 0)) * 100) / 100),
+        nominalUtangDilunasi: 0,
+        sisaSetelahDiskon: sisaSebelum,
         hariKe,
         diskonPersen,
         diskonHari,
-        menungguPelunasan: true
+        menungguJumlahBayar: true
       };
     }
 
+    const bayarUntukLunas = Math.round((sisaSebelum - diskonPenuh) * 100) / 100;
+    const nominalUtangDilunasi = bayar >= bayarUntukLunas - 0.01
+      ? sisaSebelum
+      : Math.min(sisaSebelum, Math.round((bayar / (1 - tarif)) * 100) / 100);
+    const diskonRp = Math.round(nominalUtangDilunasi * tarif * 100) / 100;
+
     return {
       berhak: true,
-      diskonRp: diskonPenuh,
-      sisaSetelahDiskon: 0,
+      diskonRp,
+      nominalUtangDilunasi,
+      sisaSetelahDiskon: Math.max(0, Math.round((sisaSebelum - nominalUtangDilunasi) * 100) / 100),
       hariKe,
       diskonPersen,
       diskonHari
     };
   }
   const sisaSebelum = Math.max(0, Number(sisaUtang) || 0);
-  return { berhak: false, diskonRp: 0, sisaSetelahDiskon: sisaSebelum - (Number(jumlahBayar) || 0), hariKe, diskonPersen, diskonHari };
+  const nominalUtangDilunasi = Math.min(sisaSebelum, Math.max(0, Number(jumlahBayar) || 0));
+  return {
+    berhak: false,
+    diskonRp: 0,
+    nominalUtangDilunasi,
+    sisaSetelahDiskon: Math.max(0, Math.round((sisaSebelum - nominalUtangDilunasi) * 100) / 100),
+    hariKe,
+    diskonPersen,
+    diskonHari
+  };
 }
 
 /**
