@@ -20,6 +20,7 @@ let unpaidInvoices = [];
 let loadedInvoices = [];
 let loadedSuppliers = [];
 let selectedPaymentInvoice = null;
+let invoicesLoadPromise = null;
 
 var {
   parseSyaratPembayaran, addDays, hitungTanggalJatuhTempo, tanggalHariIni, diffDays,
@@ -76,6 +77,14 @@ function getInvoiceBalance(invoice, payments = []) {
 }
 
 // ====== TAB NAVIGASI ======
+const tabHeadings = {
+  dashboard: 'Dashboard Ringkasan',
+  supplier: 'Data Supplier',
+  invoice: 'Faktur & Utang Usaha',
+  payment: 'Pencatatan Pembayaran',
+  laporan: 'Laporan Historis Utang'
+};
+
 function activateTab(tabName) {
   const tabButton = document.querySelector(`.tab[data-tab="${tabName}"]`);
   const tabPanel = document.getElementById(tabName);
@@ -86,6 +95,14 @@ function activateTab(tabName) {
 
   tabButton.classList.add('active');
   tabPanel.classList.add('active');
+
+  const headingEl = document.getElementById('page-heading');
+  if (headingEl && tabHeadings[tabName]) {
+    headingEl.textContent = tabHeadings[tabName];
+  }
+
+  // Auto close mobile drawer when link clicked
+  document.getElementById('sidebar')?.classList.remove('open');
 
   if (tabName === 'laporan') loadLaporan();
   if (tabName === 'dashboard') loadDashboard();
@@ -98,6 +115,15 @@ function bindTabs() {
     btn.addEventListener('click', () => activateTab(btn.dataset.tab));
   });
 }
+
+function goToNextTab() {
+  const tabOrder = ['dashboard', 'supplier', 'invoice', 'payment', 'laporan'];
+  const activeTab = document.querySelector('.tab.active')?.dataset.tab || 'dashboard';
+  const nextIndex = (tabOrder.indexOf(activeTab) + 1) % tabOrder.length;
+  activateTab(tabOrder[nextIndex]);
+}
+
+window.goToNextTab = goToNextTab;
 
 // ====== SUPPLIER ======
 async function loadSuppliers() {
@@ -253,9 +279,17 @@ document.getElementById('btn-cancel-invoice').addEventListener('click', () => {
   resetInvoiceEdit();
 });
 
-async function loadInvoices() {
+function loadInvoices() {
   if (!ensureSupabaseReady()) return;
+  if (!invoicesLoadPromise) {
+    invoicesLoadPromise = loadInvoicesData().finally(() => {
+      invoicesLoadPromise = null;
+    });
+  }
+  return invoicesLoadPromise;
+}
 
+async function loadInvoicesData() {
   const { data, error } = await db
     .from('invoices')
     .select('*, suppliers(nama), payments(*)')
@@ -334,7 +368,9 @@ function renderPaymentInfo() {
     ? ''
     : disk.berhak
       ? `<br>Diskon yang dapat dipakai: <b>${formatRp(disk.diskonRp)}</b> (${disk.diskonPersen}%)`
-      : '<br>Pembayaran tidak berada pada periode diskon.';
+      : disk.menungguPelunasan
+        ? '<br>Diskon akan dihitung pada cicilan terakhir saat faktur lunas.'
+        : '<br>Pembayaran tidak berada pada periode diskon.';
 
   infoBox.innerHTML = `
     <strong>${invoice.nama_utang || 'Utang'} — ${invoice.suppliers?.nama || '-'}</strong><br>
@@ -345,6 +381,24 @@ function renderPaymentInfo() {
   `;
   infoBox.hidden = false;
 }
+
+async function openPaymentForInvoice(invoiceId) {
+  let invoice = unpaidInvoices.find(item => String(item.id) === String(invoiceId));
+  if (!invoice) {
+    await loadInvoices();
+    invoice = unpaidInvoices.find(item => String(item.id) === String(invoiceId));
+  }
+  if (!invoice) return toast('Faktur ini sudah tidak memiliki sisa utang.', 'error');
+
+  document.getElementById('form-payment').reset();
+  resetPaymentEdit();
+  const invoiceSelect = document.getElementById('pay-invoice');
+  invoiceSelect.value = String(invoice.id);
+  invoiceSelect.dispatchEvent(new Event('change', { bubbles: true }));
+  activateTab('payment');
+}
+
+window.openPaymentForInvoice = openPaymentForInvoice;
 
 document.getElementById('pay-invoice').addEventListener('change', (e) => {
   const selected = unpaidInvoices.find(inv => String(inv.id) === e.target.value);
@@ -539,7 +593,7 @@ async function loadDashboard() {
   if (error) return toast('Gagal load dashboard: ' + error.message, 'error');
 
   const batasDekatTempo = 7;
-  const batasDekatDiskon = 3;
+  const batasDekatDiskon = 7;
   const notifications = [];
 
   data.forEach(invoice => {
@@ -616,7 +670,7 @@ async function loadDashboard() {
         <p>${notification.message}</p>
       </div>
       <div class="notification-balance"><span>Sisa utang</span><strong>${formatRp(notification.balance)}</strong></div>
-      <button class="notification-action" type="button" onclick="activateTab('payment')">Catat pembayaran</button>
+      <button class="notification-action" type="button" onclick="openPaymentForInvoice(${Number(notification.invoice.id)})">Catat pembayaran</button>
     </article>`).join('') || '<div class="notification-empty"><strong>Tidak ada yang mendesak</strong><br>Utang belum lunas yang mendekati jatuh tempo atau batas diskon akan muncul di sini.</div>';
 }
 
@@ -853,127 +907,142 @@ document.getElementById('btn-export')?.addEventListener('click', async () => {
   let grandDenda = 0;
   let grandSisa = 0;
 
-  const rowsHtml = rows.map((inv, idx) => {
-    const totalDibayar = getInvoiceTotalPaid(inv.payments);
-    const totalTerpakai = getInvoiceTotalApplied(inv.payments);
-    const totalDiskon = getInvoiceTotalDiscount(inv.payments);
-    const totalDenda = getInvoiceTotalLateFee(inv.payments);
-    const sisa = getInvoiceBalance(inv, inv.payments);
-    const st = statusDinamis(inv, totalTerpakai, sisa);
-    const { sisaHari, hariLewatTempo } = getReportDayMetrics(inv, inv.payments, sisa);
-
-    grandTotal += Number(inv.total_amount || 0);
+  rows.forEach(invoice => {
+    const totalDibayar = getInvoiceTotalPaid(invoice.payments);
+    const totalDiskon = getInvoiceTotalDiscount(invoice.payments);
+    const totalDenda = getInvoiceTotalLateFee(invoice.payments);
+    const sisa = getInvoiceBalance(invoice, invoice.payments);
+    grandTotal += Number(invoice.total_amount || 0);
     grandDibayar += totalDibayar;
     grandDiskon += totalDiskon;
     grandDenda += totalDenda;
     grandSisa += sisa;
+  });
+  const reportTitle = 'LAPORAN HISTORIS UTANG USAHA - TOKO ELEKTRONIK MAJU';
+  const reportDetails = `Periode: ${periodLabel} | Status: ${filterLabel} | Tanggal Ekspor: ${formatTanggal(todayStr())} | Total Baris: ${rows.length} Faktur`;
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'Toko Elektronik Maju';
+  workbook.calcProperties.fullCalcOnLoad = true;
+  const worksheet = workbook.addWorksheet('Laporan Utang', { views: [{ state: 'frozen', ySplit: 4 }] });
+  const headers = ['No', 'Nama Utang', 'No Faktur', 'Supplier', 'Tgl Faktur', 'Jatuh Tempo', 'Total (Rp)', 'Dibayar (Rp)', 'Diskon (Rp)', 'Denda (Rp)', 'Sisa (Rp)', 'Syarat', 'Status', 'Hari Sisa', 'Lewat Tempo'];
+  const moneyFormat = '#,##0.00;[Red](#,##0.00)';
+  worksheet.columns = [8, 28, 17, 22, 15, 16, 18, 18, 16, 16, 18, 16, 18, 13, 15].map(width => ({ width }));
 
-    const bgRow = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
-    let statusBg = '#dbeafe'; let statusColor = '#1e40af';
-    if (st.cls === 'lunas') { statusBg = '#dcfce7'; statusColor = '#166534'; }
-    if (st.cls === 'jatuh_tempo') { statusBg = '#fee2e2'; statusColor = '#991b1b'; }
+  worksheet.mergeCells(1, 1, 1, headers.length);
+  worksheet.getCell(1, 1).value = reportTitle;
+  worksheet.getCell(1, 1).font = { name: 'Arial', size: 15, bold: true, color: { argb: 'FFFFFFFF' } };
+  worksheet.getCell(1, 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } };
+  worksheet.getCell(1, 1).alignment = { horizontal: 'center', vertical: 'middle' };
+  worksheet.getRow(1).height = 28;
 
-    return `
-      <tr style="background-color: ${bgRow};">
-        <td style="border: 1px solid #cbd5e1; padding: 7px; text-align: center;">${idx + 1}</td>
-        <td style="border: 1px solid #cbd5e1; padding: 7px; font-weight: bold;">${inv.nama_utang || '-'}</td>
-        <td style="border: 1px solid #cbd5e1; padding: 7px;">${inv.nomor_faktur || '-'}</td>
-        <td style="border: 1px solid #cbd5e1; padding: 7px;">${inv.suppliers?.nama || '-'}</td>
-        <td style="border: 1px solid #cbd5e1; padding: 7px; text-align: center;">${formatTanggal(inv.tanggal_faktur)}</td>
-        <td style="border: 1px solid #cbd5e1; padding: 7px; text-align: center;">${formatTanggal(inv.tanggal_jatuh_tempo)}</td>
-        <td style="border: 1px solid #cbd5e1; padding: 7px; text-align: right; mso-number-format:'\\#\\,\\#\\#0';">${Math.round(inv.total_amount || 0)}</td>
-        <td style="border: 1px solid #cbd5e1; padding: 7px; text-align: right; mso-number-format:'\\#\\,\\#\\#0';">${Math.round(totalDibayar)}</td>
-        <td style="border: 1px solid #cbd5e1; padding: 7px; text-align: right; mso-number-format:'\\#\\,\\#\\#0';">${Math.round(totalDiskon)}</td>
-        <td style="border: 1px solid #cbd5e1; padding: 7px; text-align: right; mso-number-format:'\\#\\,\\#\\#0';">${Math.round(totalDenda)}</td>
-        <td style="border: 1px solid #cbd5e1; padding: 7px; text-align: right; font-weight: bold; mso-number-format:'\\#\\,\\#\\#0';">${Math.round(sisa)}</td>
-        <td style="border: 1px solid #cbd5e1; padding: 7px; text-align: center;">${formatSyarat(inv.syarat_pembayaran)}</td>
-        <td style="border: 1px solid #cbd5e1; padding: 7px; text-align: center; background-color: ${statusBg}; color: ${statusColor}; font-weight: bold;">${st.label}</td>
-        <td style="border: 1px solid #cbd5e1; padding: 7px; text-align: center;">${sisaHari}</td>
-        <td style="border: 1px solid #cbd5e1; padding: 7px; text-align: center; ${hariLewatTempo > 0 ? 'color: red; font-weight: bold;' : ''}">${hariLewatTempo}</td>
-      </tr>`;
-  }).join('');
+  worksheet.mergeCells(2, 1, 2, headers.length);
+  worksheet.getCell(2, 1).value = reportDetails;
+  worksheet.getCell(2, 1).font = { name: 'Arial', size: 9, color: { argb: 'FF334155' } };
+  worksheet.getCell(2, 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF4FA' } };
+  worksheet.getCell(2, 1).alignment = { vertical: 'middle' };
+  worksheet.getRow(2).height = 22;
+  worksheet.addRow([]);
 
-  const excelTemplate = `
-    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-    <head>
-      <!--[if gte mso 9]>
-      <xml>
-        <x:ExcelWorkbook>
-          <x:ExcelWorksheets>
-            <x:ExcelWorksheet>
-              <x:Name>Laporan Utang</x:Name>
-              <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
-            </x:ExcelWorksheet>
-          </x:ExcelWorksheets>
-        </x:ExcelWorkbook>
-      </xml>
-      <![endif]-->
-      <meta http-equiv="content-type" content="application/vnd.ms-excel; charset=UTF-8">
-      <style>
-        body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10.5pt; }
-        table { border-collapse: collapse; width: 100%; }
-        th { background-color: #1e3a8a; color: #ffffff; font-weight: bold; border: 1px solid #0f172a; padding: 9px; text-align: center; font-size: 10pt; }
-      </style>
-    </head>
-    <body>
-      <table>
-        <tr>
-          <th colspan="15" style="background-color: #1e3a8a; color: #ffffff; font-size: 15pt; padding: 14px; text-align: center; border: 1px solid #0f172a;">
-            📊 LAPORAN HISTORIS UTANG USAHA — TOKO ELEKTRONIK
-          </th>
-        </tr>
-        <tr>
-          <td colspan="15" style="background-color: #f1f5f9; color: #334155; padding: 8px 12px; font-size: 9.5pt; border: 1px solid #cbd5e1;">
-            <strong>Periode:</strong> ${periodLabel} &nbsp;|&nbsp; <strong>Status:</strong> ${filterLabel} &nbsp;|&nbsp; <strong>Tanggal Ekspor:</strong> ${formatTanggal(todayStr())} &nbsp;|&nbsp; <strong>Total Baris:</strong> ${rows.length} Faktur
-          </td>
-        </tr>
-        <tr><td colspan="15" style="height: 8px;"></td></tr>
-        <thead>
-          <tr>
-            <th>No</th>
-            <th>Nama Utang</th>
-            <th>No Faktur</th>
-            <th>Supplier</th>
-            <th>Tgl Faktur</th>
-            <th>Jatuh Tempo</th>
-            <th>Total (Rp)</th>
-            <th>Dibayar (Rp)</th>
-            <th>Diskon (Rp)</th>
-            <th>Denda (Rp)</th>
-            <th>Sisa (Rp)</th>
-            <th>Syarat</th>
-            <th>Status</th>
-            <th>Hari Sisa</th>
-            <th>Lewat Tempo</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rowsHtml}
-        </tbody>
-        <tfoot>
-          <tr style="background-color: #fef08a; font-weight: bold; border-top: 2px solid #ca8a04;">
-            <td colspan="6" style="border: 1px solid #ca8a04; padding: 9px; text-align: center; font-size: 10.5pt;">TOTAL KESELURUHAN</td>
-            <td style="border: 1px solid #ca8a04; padding: 9px; text-align: right; mso-number-format:'\\#\\,\\#\\#0';">${Math.round(grandTotal)}</td>
-            <td style="border: 1px solid #ca8a04; padding: 9px; text-align: right; mso-number-format:'\\#\\,\\#\\#0';">${Math.round(grandDibayar)}</td>
-            <td style="border: 1px solid #ca8a04; padding: 9px; text-align: right; mso-number-format:'\\#\\,\\#\\#0';">${Math.round(grandDiskon)}</td>
-            <td style="border: 1px solid #ca8a04; padding: 9px; text-align: right; mso-number-format:'\\#\\,\\#\\#0';">${Math.round(grandDenda)}</td>
-            <td style="border: 1px solid #ca8a04; padding: 9px; text-align: right; mso-number-format:'\\#\\,\\#\\#0'; color: #991b1b;">${Math.round(grandSisa)}</td>
-            <td colspan="4" style="border: 1px solid #ca8a04; padding: 9px; text-align: center; color: #475569;">—</td>
-          </tr>
-        </tfoot>
-      </table>
-    </body>
-    </html>`;
+  const headerRow = worksheet.addRow(headers);
+  headerRow.height = 24;
+  headerRow.eachCell((reportCell) => {
+    reportCell.font = { name: 'Arial', size: 9, bold: true, color: { argb: 'FFFFFFFF' } };
+    reportCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } };
+    reportCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+  });
 
-  const blob = new Blob([excelTemplate], { type: 'application/vnd.ms-excel;charset=utf-8' });
+  rows.forEach((invoice, index) => {
+    const totalDibayar = getInvoiceTotalPaid(invoice.payments);
+    const totalTerpakai = getInvoiceTotalApplied(invoice.payments);
+    const totalDiskon = getInvoiceTotalDiscount(invoice.payments);
+    const totalDenda = getInvoiceTotalLateFee(invoice.payments);
+    const sisa = getInvoiceBalance(invoice, invoice.payments);
+    const status = statusDinamis(invoice, totalTerpakai, sisa);
+    const { sisaHari, hariLewatTempo } = getReportDayMetrics(invoice, invoice.payments, sisa);
+    const excelRow = index + 5;
+    const reportRow = worksheet.addRow([
+      index + 1,
+      invoice.nama_utang || '-',
+      invoice.nomor_faktur || '-',
+      invoice.suppliers?.nama || '-',
+      new Date(`${invoice.tanggal_faktur}T00:00:00.000Z`),
+      new Date(`${invoice.tanggal_jatuh_tempo}T00:00:00.000Z`),
+      Number(invoice.total_amount || 0),
+      totalDibayar,
+      totalDiskon,
+      totalDenda,
+      { formula: `G${excelRow}-H${excelRow}-I${excelRow}+J${excelRow}`, result: sisa },
+      String(formatSyarat(invoice.syarat_pembayaran)),
+      { formula: `IF(K${excelRow}<=0.009,"LUNAS",IF(F${excelRow}<TODAY(),"JATUH TEMPO","AKTIF"))`, result: status.label },
+      sisa > 0.009 ? { formula: `MAX(0,F${excelRow}-TODAY())`, result: sisaHari } : sisaHari,
+      sisa > 0.009 ? { formula: `MAX(0,TODAY()-F${excelRow})`, result: hariLewatTempo } : hariLewatTempo
+    ]);
+
+    reportRow.eachCell((reportCell, columnNumber) => {
+      reportCell.border = {
+        top: { style: 'thin', color: { argb: 'FFDCE3EC' } },
+        bottom: { style: 'thin', color: { argb: 'FFDCE3EC' } },
+        left: { style: 'thin', color: { argb: 'FFDCE3EC' } },
+        right: { style: 'thin', color: { argb: 'FFDCE3EC' } }
+      };
+      if (index % 2 === 1) reportCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF6F8FB' } };
+      if (columnNumber === 1 || (columnNumber >= 5 && columnNumber <= 6) || columnNumber >= 12) {
+        reportCell.alignment = { horizontal: 'center', vertical: 'middle' };
+      }
+      if (columnNumber >= 7 && columnNumber <= 11) {
+        reportCell.numFmt = moneyFormat;
+        reportCell.alignment = { horizontal: 'right', vertical: 'middle' };
+      }
+    });
+
+    reportRow.getCell(2).font = { bold: true };
+    reportRow.getCell(5).numFmt = 'dd/mm/yyyy';
+    reportRow.getCell(6).numFmt = 'dd/mm/yyyy';
+    reportRow.getCell(11).font = { bold: true };
+    reportRow.getCell(12).numFmt = '@';
+    reportRow.getCell(13).font = { bold: true, color: { argb: status.cls === 'lunas' ? 'FF166534' : status.cls === 'jatuh_tempo' ? 'FF991B1B' : 'FF1E40AF' } };
+    if (status.cls === 'lunas') reportRow.getCell(13).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } };
+    if (status.cls === 'jatuh_tempo') reportRow.getCell(13).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+  });
+
+  const firstDataRow = 5;
+  const lastDataRow = firstDataRow + rows.length - 1;
+  const totalRowNumber = lastDataRow + 1;
+  worksheet.mergeCells(totalRowNumber, 1, totalRowNumber, 6);
+  const totalRow = worksheet.getRow(totalRowNumber);
+  totalRow.getCell(1).value = 'TOTAL KESELURUHAN';
+  totalRow.getCell(1).alignment = { horizontal: 'center' };
+  totalRow.getCell(1).font = { bold: true };
+  const cachedTotals = [grandTotal, grandDibayar, grandDiskon, grandDenda, grandSisa];
+  cachedTotals.forEach((cachedValue, index) => {
+    const columnNumber = index + 7;
+    const columnLetter = String.fromCharCode(64 + columnNumber);
+    const totalCell = totalRow.getCell(columnNumber);
+    totalCell.value = { formula: `SUM(${columnLetter}${firstDataRow}:${columnLetter}${lastDataRow})`, result: cachedValue };
+    totalCell.numFmt = moneyFormat;
+    totalCell.font = { bold: true };
+    totalCell.alignment = { horizontal: 'right' };
+  });
+  for (let columnNumber = 1; columnNumber <= headers.length; columnNumber += 1) {
+    const totalCell = totalRow.getCell(columnNumber);
+    totalCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDBEAFE' } };
+    totalCell.border = { top: { style: 'medium', color: { argb: 'FF315F9C' } } };
+  }
+  for (let columnNumber = 12; columnNumber <= headers.length; columnNumber += 1) {
+    totalRow.getCell(columnNumber).value = '-';
+    totalRow.getCell(columnNumber).alignment = { horizontal: 'center' };
+  }
+
+  const excelBuffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `laporan_utang_${todayStr()}.xls`;
+  a.download = `laporan_utang_${todayStr()}.xlsx`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 
   toast('Laporan Excel berhasil diunduh ✓', 'success');
 });
@@ -986,7 +1055,7 @@ document.getElementById('btn-export-pdf')?.addEventListener('click', () => {
 
   const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   pdf.setFontSize(16);
-  pdf.text('Laporan Utang', 12, 14);
+  pdf.text('Laporan Utang — Toko Elektronik Maju', 12, 14);
   pdf.setFontSize(9);
   pdf.text(`Tanggal cetak: ${formatTanggal(todayStr())}`, 12, 20);
   pdf.autoTable({

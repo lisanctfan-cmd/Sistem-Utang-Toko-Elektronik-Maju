@@ -65,19 +65,23 @@ Aplikasi web berbasis klien (*client-side web application*) untuk mengelola penc
 
 ```text
 sistem-utang/
-├── index.html        # Struktur antarmuka pengguna (UI), tata letak navigasi tab, form, dan tabel
-├── app.js            # Logika bisnis akuntansi (parsing syarat pembayaran, hitung diskon, jatuh tempo, status)
-├── script.js         # Integrasi Supabase SDK, manipulasi DOM, manajemen state, filter, dan ekspor
-├── style.css         # Styling antarmuka modern, sistem variabel warna, kartu metrik, dan responsif
-├── database.sql      # Skrip DDL & DCL PostgreSQL untuk konfigurasi database Supabase
-└── README.md         # Dokumentasi resmi proyek
+├── frontend/
+│   ├── index.html    # Antarmuka, navigasi, formulir, dan tabel
+│   ├── script.js     # Integrasi Supabase, interaksi UI, filter, dan ekspor
+│   └── style.css     # Gaya antarmuka
+├── backend/
+│   ├── app.js        # Logika bisnis akuntansi yang dimuat di browser
+│   └── database.sql  # Skema PostgreSQL untuk backend Supabase
+└── README.md         # Dokumentasi proyek
 ```
+
+Backend data aplikasi dikelola oleh Supabase. File `backend/app.js` berisi logika bisnis yang dimuat oleh halaman frontend; proyek ini tidak memiliki server Node.js terpisah.
 
 ---
 
 ## 🛠️ Rincian Modul Kode
 
-### 1. `app.js` (Accounting & Business Logic)
+### 1. `backend/app.js` (Accounting & Business Logic)
 Menyediakan modul `window.AppLogic` yang berisi fungsi-fungsi murni (*pure functions*):
 - `parseSyaratPembayaran(syarat)`: Melakukan ekstraksi persentase diskon, hari diskon, batas hari net, dan mode akhir bulan (*End of Month / EOM*).
 - `hitungTanggalJatuhTempo(tanggalFaktur, syarat)`: Menghitung tanggal jatuh tempo berdasarkan tanggal faktur dan ketentuan termin.
@@ -88,7 +92,7 @@ Menyediakan modul `window.AppLogic` yang berisi fungsi-fungsi murni (*pure funct
 - `diffDays(dateStr)`: Menghitung selisih hari dari kalender hari ini (WIB/Jakarta) ke tanggal target.
 - `exportToCSV(filename, rows, headers)`: Helper konversi array objek ke file CSV dengan UTF-8 BOM.
 
-### 2. `script.js` (UI Controller & Database Integration)
+### 2. `frontend/script.js` (UI Controller & Database Integration)
 - Mengelola koneksi klien Supabase melalui `supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)`.
 - Pengelolaan tab navigasi (`dashboard`, `supplier`, `invoice`, `payment`, `laporan`).
 - Operasi CRUD tabel `suppliers`, `invoices`, dan `payments`.
@@ -96,60 +100,19 @@ Menyediakan modul `window.AppLogic` yang berisi fungsi-fungsi murni (*pure funct
 - Penanganan ekspor file Excel berbasis XML Spreadsheet HTML Template dan PDF via jsPDF AutoTable.
 - Komponen notifikasi mengambang (*Toast Notification*).
 
-### 3. `style.css` (Design System)
+### 3. `frontend/style.css` (Design System)
 - Menggunakan CSS Custom Properties (`--blue-800`, `--slate-900`, `--slate-200`, dll.).
 - Tata letak responsif untuk layar desktop hingga perangkat seluler.
 - Komponen visual: `.card`, `.form-grid`, `.stat-card`, `.badge`, `.notification-item`, dan `.toast`.
 
-### 4. `database.sql` (Database Schema)
-Skrip SQL untuk database PostgreSQL Supabase:
-- Penyesuaian kolom tabel `invoices` (`syarat_pembayaran`, `net_hari`, `diskon_persen`, `diskon_hari`, `keterangan`) agar bersifat opsional.
-- Penyesuaian kolom tabel `payments` (`diskon_didapat`, `denda_dikenakan`, `keterangan`).
-- Menonaktifkan *Row Level Security* (RLS) pada tabel `suppliers`, `invoices`, dan `payments`.
-- Pemberian hak akses penuh (*GRANT ALL*) kepada role `anon`, `authenticated`, dan `service_role`.
+### 4. `backend/database.sql` (Database Schema)
+Membuat tiga tabel yang sesuai dengan menu data aplikasi: `suppliers`, `invoices`, dan `payments`. Dashboard dan laporan membaca gabungan data dari ketiga tabel tersebut, sehingga tidak memerlukan tabel tersendiri. Skrip juga menyiapkan relasi, indeks, serta akses yang dipakai integrasi Supabase.
 
 ---
 
 ## 🗄️ Skema Database (Supabase PostgreSQL)
 
-### Tabel `suppliers`
-| Kolom | Tipe Data | Keterangan |
-| :--- | :--- | :--- |
-| `id` | `BIGSERIAL` / `INT8` | Primary Key |
-| `nama` | `VARCHAR` / `TEXT` | Nama Supplier (Wajib) |
-| `kontak` | `VARCHAR` / `TEXT` | No. Telepon / Email |
-| `alamat` | `TEXT` | Alamat Supplier |
-| `created_at` | `TIMESTAMPTZ` | Waktu Pembuatan Data |
-
-### Tabel `invoices`
-| Kolom | Tipe Data | Keterangan |
-| :--- | :--- | :--- |
-| `id` | `BIGSERIAL` / `INT8` | Primary Key |
-| `nama_utang` | `TEXT` | Deskripsi / Nama Utang |
-| `supplier_id` | `BIGINT` | Foreign Key ke `suppliers.id` |
-| `nomor_faktur` | `VARCHAR` / `TEXT` | Nomor Faktur / Invoice |
-| `tanggal_faktur` | `DATE` | Tanggal Terbit Faktur |
-| `tanggal_jatuh_tempo` | `DATE` | Tanggal Batas Jatuh Tempo |
-| `total_amount` | `NUMERIC` / `FLOAT8` | Total Nilai Utang (Rp) |
-| `syarat_pembayaran` | `TEXT` | Syarat Termin (Default: `'-'`) |
-| `diskon_persen` | `NUMERIC` | Persentase Diskon (Default: `0`) |
-| `diskon_hari` | `INTEGER` | Batas Hari Diskon (Default: `0`) |
-| `net_hari` | `INTEGER` | Batas Hari Net (Default: `0`) |
-| `keterangan` | `TEXT` | Catatan Tambahan |
-| `created_at` | `TIMESTAMPTZ` | Waktu Pembuatan Data |
-
-### Tabel `payments`
-| Kolom | Tipe Data | Keterangan |
-| :--- | :--- | :--- |
-| `id` | `BIGSERIAL` / `INT8` | Primary Key |
-| `invoice_id` | `BIGINT` | Foreign Key ke `invoices.id` |
-| `tanggal_bayar` | `DATE` | Tanggal Transaksi Pembayaran |
-| `jumlah_bayar` | `NUMERIC` / `FLOAT8` | Nominal yang Dibayarkan (Rp) |
-| `diskon_didapat` | `NUMERIC` | Potongan Diskon yang Diperoleh (Rp) |
-| `denda_dikenakan` | `NUMERIC` | Denda Keterlambatan (Rp) |
-| `metode` | `VARCHAR` | Metode Bayar (`transfer`, `tunai`, `giro`) |
-| `keterangan` | `TEXT` | Keterangan Transaksi |
-| `created_at` | `TIMESTAMPTZ` | Waktu Pembuatan Data |
+`backend/database.sql` membuat tiga tabel data: `suppliers` untuk menu Supplier, `invoices` untuk menu Faktur & Utang, dan `payments` untuk menu Pembayaran. Data dashboard dan laporan dihitung dari tabel-tabel ini.
 
 ---
 
@@ -158,10 +121,10 @@ Skrip SQL untuk database PostgreSQL Supabase:
 ### 1. Persiapan Database Supabase
 1. Buka dashboard proyek di [Supabase](https://supabase.com).
 2. Masuk ke menu **SQL Editor** pada panel samping.
-3. Buka file `database.sql` pada proyek ini, salin seluruh kueri SQL, tempelkan ke SQL Editor Supabase, lalu jalankan (**Run**).
+3. Buka `backend/database.sql`, salin seluruh kueri SQL, tempelkan ke SQL Editor Supabase, lalu jalankan (**Run**).
 
 ### 2. Konfigurasi Kredensial API
-Buka file `script.js`, pastikan variabel konfigurasi pada baris teratas telah sesuai dengan proyek Supabase Anda:
+Buka `frontend/script.js`, pastikan variabel konfigurasi pada baris teratas telah sesuai dengan proyek Supabase Anda:
 
 ```javascript
 const SUPABASE_URL = 'https://<YOUR-PROJECT-REF>.supabase.co';
@@ -170,7 +133,7 @@ const SUPABASE_ANON_KEY = '<YOUR-SUPABASE-ANON-KEY>';
 
 ### 3. Menjalankan Aplikasi
 Aplikasi ini murni menggunakan teknologi web standar (*vanilla web*). Anda dapat menjalankannya langsung dengan:
-- Membuka file `index.html` langsung pada peramban web (*browser*), atau
+- Membuka `frontend/index.html` pada peramban web (*browser*), atau
 - Menggunakan ekstensi server lokal seperti *Live Server* pada VS Code.
 
 ---

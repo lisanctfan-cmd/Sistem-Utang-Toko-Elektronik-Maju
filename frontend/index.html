@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sistem Utang Toko Elektronik Maju</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&family=Lora:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./style.css">
+<script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
+</head>
+<body>
+
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar">
+    <a class="sidebar-brand" href="#dashboard" onclick="activateTab('dashboard'); return false;">
+      <span class="brand-mark"><i data-lucide="wallet"></i></span>
+      <span class="brand-copy">
+        <strong>Sistem Utang</strong>
+        <span>Toko Elektronik Maju</span>
+      </span>
+    </a>
+
+    <div class="sidebar-label">MENU UTAMA</div>
+    <nav class="sidebar-nav tabs" aria-label="Navigasi utama">
+      <button type="button" class="sidebar-link tab active" data-tab="dashboard"><i data-lucide="layout-dashboard"></i><span>Dashboard</span></button>
+      <button type="button" class="sidebar-link tab" data-tab="supplier"><i data-lucide="users"></i><span>Supplier</span></button>
+      <button type="button" class="sidebar-link tab" data-tab="invoice"><i data-lucide="file-text"></i><span>Faktur &amp; Utang</span></button>
+      <button type="button" class="sidebar-link tab" data-tab="payment"><i data-lucide="credit-card"></i><span>Pembayaran</span></button>
+      <button type="button" class="sidebar-link tab" data-tab="laporan"><i data-lucide="bar-chart-3"></i><span>Laporan</span></button>
+    </nav>
+
+    <div class="sidebar-spacer"></div>
+    <div class="sidebar-profile">
+      <span class="profile-avatar">EM</span>
+      <span><strong>Administrator</strong><small>Toko Elektronik Maju</small></span>
+    </div>
+  </aside>
+
+  <button class="sidebar-scrim" type="button" aria-label="Tutup menu" onclick="document.getElementById('sidebar').classList.remove('open')"></button>
+
+  <div class="workspace">
+    <header class="topbar">
+      <button class="mobile-menu-button" type="button" aria-label="Buka menu" onclick="document.getElementById('sidebar').classList.toggle('open')"><i data-lucide="menu"></i></button>
+      <div class="topbar-actions">
+        <button class="next-menu-button" type="button" aria-label="Ke menu berikutnya" title="Ke menu berikutnya" onclick="goToNextTab()"><i data-lucide="chevron-right"></i></button>
+      </div>
+    </header>
+
+<main class="main-container">
+
+  <!-- DASHBOARD -->
+  <section id="dashboard" class="tab-content active">
+    <div class="dashboard-hero">
+      <div class="hero-copy">
+        <h1>Selamat datang di<br><span>Toko Elektronik Maju</span></h1>
+        <p class="hero-description">Kelola utang dan pembayaran dengan lebih mudah.</p>
+      </div>
+      <div class="hero-visual">
+        <img src="./assets/appliance-products.png" alt="Pilihan produk elektronik rumah tangga">
+      </div>
+    </div>
+
+    <div class="page-heading-row">
+      <div>
+        <h2 class="page-title">Notifikasi</h2>
+        <p class="page-subtitle">Pengingat jatuh tempo, batas syarat pembayaran, dan utang terlambat</p>
+      </div>
+      <div class="metric-pill">
+        <span class="metric-pill-label">Perlu Tindakan:</span>
+        <span class="metric-pill-count" id="notification-count">0</span>
+      </div>
+    </div>
+
+    <div class="notification-feed" id="dashboard-notifications" aria-live="polite">
+      <div class="notification-empty">Memuat notifikasi...</div>
+    </div>
+  </section>
+
+  <!-- SUPPLIER -->
+  <section id="supplier" class="tab-content">
+    <div class="page-heading-row">
+      <div>
+        <h1 class="page-title">Supplier</h1>
+        <p class="page-subtitle">Kelola daftar mitra pemasok barang</p>
+      </div>
+    </div>
+
+    <div class="clean-card">
+      <div class="card-head">
+        <h2 class="card-heading">Tambah / Edit Supplier</h2>
+      </div>
+      <form id="form-supplier" class="form-layout">
+        <input type="hidden" id="sup-id">
+        <div class="form-grid">
+          <label class="field-group">
+            <span class="field-label">Nama Supplier <span class="field-req">*</span></span>
+            <input type="text" id="sup-nama" placeholder="Contoh: PT Sumber Elektronik Maju" required>
+          </label>
+          <label class="field-group">
+            <span class="field-label">Kontak (Telp / Email / WA)</span>
+            <input type="text" id="sup-kontak" placeholder="Contoh: 081234567890 / sales@sumber.com">
+          </label>
+          <label class="field-group span-2">
+            <span class="field-label">Alamat Kantor / Gudang</span>
+            <textarea id="sup-alamat" placeholder="Alamat lengkap supplier..."></textarea>
+          </label>
+        </div>
+        <div class="form-actions">
+          <button type="submit" id="btn-save-supplier" class="btn btn-primary">Simpan Supplier</button>
+          <button type="button" id="btn-cancel-supplier" class="btn btn-secondary" hidden>Batal Edit</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="table-container">
+      <div class="table-bar">
+        <div class="table-heading">Daftar Supplier</div>
+      </div>
+      <div class="table-wrap">
+        <table id="tabel-supplier">
+          <thead><tr><th>Nama Supplier</th><th>Kontak</th><th>Alamat</th><th>Aksi</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- INVOICE -->
+  <section id="invoice" class="tab-content">
+    <div class="page-heading-row">
+      <div>
+        <h1 class="page-title">Faktur & Utang</h1>
+        <p class="page-subtitle">Pencatatan utang dan syarat pembayaran</p>
+      </div>
+    </div>
+
+    <div class="clean-card">
+      <div class="card-head">
+        <h2 class="card-heading">Tambah / Edit Faktur</h2>
+      </div>
+      <form id="form-invoice" class="form-layout">
+        <input type="hidden" id="inv-id">
+        <input type="hidden" id="inv-current-bukti-url">
+        <div class="form-grid">
+          <label class="field-group span-2">
+            <span class="field-label">Nama Utang / Deskripsi Barang <span class="field-req">*</span></span>
+            <input type="text" id="inv-nama-utang" placeholder="Contoh: Pembelian Smart TV" required>
+          </label>
+          <label class="field-group">
+            <span class="field-label">Pilih Supplier <span class="field-req">*</span></span>
+            <select id="inv-supplier" required></select>
+          </label>
+          <label class="field-group">
+            <span class="field-label">Nomor Faktur <span class="field-req">*</span></span>
+            <input type="text" id="inv-nomor" placeholder="Contoh: INV-2026-001" required>
+          </label>
+          <label class="field-group">
+            <span class="field-label">Tanggal Faktur <span class="field-req">*</span></span>
+            <input type="date" id="inv-tanggal" lang="id-ID" required>
+          </label>
+          <label class="field-group">
+            <span class="field-label">Tanggal Jatuh Tempo <span class="field-req">*</span></span>
+            <input type="date" id="inv-jatuh-tempo" lang="id-ID" required>
+          </label>
+          <label class="field-group">
+            <span class="field-label">Total Utang (Rp) <span class="field-req">*</span></span>
+            <input type="number" id="inv-total" placeholder="0" step="0.01" required>
+          </label>
+          <label class="field-group">
+            <span class="field-label">Syarat Pembayaran</span>
+            <input type="text" id="inv-syarat" placeholder="Contoh: 2/10 n/30">
+          </label>
+          <label class="field-group span-2">
+            <span class="field-label">Keterangan Tambahan</span>
+            <textarea id="inv-keterangan" placeholder="Catatan pembelian, syarat garansi, atau keterangan lainnya..."></textarea>
+          </label>
+        </div>
+        <div class="form-actions">
+          <button type="submit" id="btn-save-invoice" class="btn btn-primary">Simpan Faktur</button>
+          <button type="button" id="btn-cancel-invoice" class="btn btn-secondary" hidden>Batal Edit</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="table-container">
+      <div class="table-bar">
+        <div class="table-heading">Daftar Faktur Pembelian</div>
+      </div>
+      <div class="table-wrap">
+        <table id="tabel-invoice">
+          <thead>
+            <tr>
+              <th>Nama Utang</th><th>Supplier</th><th>No Faktur</th><th>Tgl Faktur</th><th>Jatuh Tempo</th>
+              <th>Total</th><th>Syarat</th><th>Sisa</th><th>Status</th><th>Aksi</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- PAYMENT -->
+  <section id="payment" class="tab-content">
+    <div class="page-heading-row">
+      <div>
+        <h1 class="page-title">Pembayaran</h1>
+        <p class="page-subtitle">Pencatatan pembayaran utang secara lunas atau termin</p>
+      </div>
+    </div>
+
+    <div class="clean-card">
+      <div class="card-head">
+        <h2 class="card-heading">Form Pembayaran Utang</h2>
+      </div>
+      <form id="form-payment" class="form-layout">
+        <input type="hidden" id="pay-id">
+        <div class="form-grid">
+          <label class="field-group span-2">
+            <span class="field-label">Pilih Faktur Belum Lunas <span class="field-req">*</span></span>
+            <select id="pay-invoice" required></select>
+          </label>
+          <div id="pay-info" class="info-alert span-2" hidden></div>
+          <label class="field-group">
+            <span class="field-label">Tanggal Bayar <span class="field-req">*</span></span>
+            <input type="date" id="pay-tanggal" lang="id-ID" required>
+          </label>
+          <label class="field-group">
+            <span class="field-label">Jumlah Bayar (Rp) <span class="field-req">*</span></span>
+            <input type="number" id="pay-jumlah" placeholder="0" step="0.01" required>
+          </label>
+          <label id="pay-denda-field" class="field-group" hidden>
+            <span class="field-label">Denda Keterlambatan (Rp)</span>
+            <input type="number" id="pay-total-denda" min="0" step="0.01">
+          </label>
+          <label class="field-group">
+            <span class="field-label">Metode Pembayaran</span>
+            <select id="pay-metode">
+              <option value="transfer">Transfer Bank</option>
+              <option value="tunai">Tunai / Cash</option>
+              <option value="giro">Giro</option>
+              <option value="cek">Cek</option>
+            </select>
+          </label>
+          <label class="field-group span-2">
+            <span class="field-label">Keterangan Transaksi</span>
+            <textarea id="pay-keterangan" placeholder="Nomor referensi bukti transfer atau catatan pembayaran..."></textarea>
+          </label>
+        </div>
+        <div class="form-actions">
+          <button type="submit" id="btn-save-payment" class="btn btn-primary">Simpan Pembayaran</button>
+          <button type="button" id="btn-cancel-payment" class="btn btn-secondary" hidden>Batal Edit</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="table-container">
+      <div class="table-bar">
+        <div class="table-heading">Riwayat Transaksi Pembayaran</div>
+      </div>
+      <div class="table-wrap">
+        <table id="tabel-payment">
+          <thead>
+            <tr><th>Tanggal</th><th>Nama Utang</th><th>No Faktur</th><th>Supplier</th><th>Jumlah</th><th>Diskon</th><th>Denda</th><th>Metode</th><th>Keterangan</th><th>Aksi</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- LAPORAN -->
+  <section id="laporan" class="tab-content">
+    <div class="page-heading-row">
+      <div>
+        <h1 class="page-title">Laporan</h1>
+        <p class="page-subtitle">Rekapitulasi historis utang</p>
+      </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="clean-card filter-box">
+      <div class="filter-controls">
+        <label class="filter-field">
+          <span class="filter-label">Status Faktur</span>
+          <select id="filter-status">
+            <option value="all">Semua Status</option>
+            <option value="belum_lunas">Belum Lunas</option>
+            <option value="lunas">Lunas</option>
+            <option value="jatuh_tempo">Jatuh Tempo</option>
+          </select>
+        </label>
+        <label class="filter-field">
+          <span class="filter-label">Berdasarkan Tanggal</span>
+          <select id="filter-date-type">
+            <option value="tanggal_faktur">Tanggal Faktur</option>
+            <option value="tanggal_jatuh_tempo">Tanggal Jatuh Tempo</option>
+          </select>
+        </label>
+        <label class="filter-field">
+          <span class="filter-label">Dari Tanggal</span>
+          <input type="date" id="filter-start-date" lang="id-ID">
+        </label>
+        <label class="filter-field">
+          <span class="filter-label">Sampai Tanggal</span>
+          <input type="date" id="filter-end-date" lang="id-ID">
+        </label>
+      </div>
+
+      <div class="filter-footer">
+        <div class="period-pills">
+          <span class="period-pills-title">Periode:</span>
+          <button type="button" class="pill-btn" onclick="setLaporanPeriod('all')">Semua</button>
+          <button type="button" class="pill-btn" onclick="setLaporanPeriod('this_month')">Bulan Ini</button>
+          <button type="button" class="pill-btn" onclick="setLaporanPeriod('last_month')">Bulan Lalu</button>
+          <button type="button" class="pill-btn" onclick="setLaporanPeriod('this_year')">Tahun Ini</button>
+        </div>
+        <div class="export-actions">
+          <button id="btn-export" type="button" class="btn btn-export-excel">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Unduh Excel
+          </button>
+          <button id="btn-export-pdf" type="button" class="btn btn-secondary">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+            Unduh PDF
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="table-container">
+      <div class="table-bar">
+        <div class="table-heading">Tabel Rekap Historis</div>
+      </div>
+      <div class="table-wrap">
+        <table id="tabel-laporan">
+          <thead>
+            <tr>
+              <th>Nama Utang</th><th>No Faktur</th><th>Supplier</th><th>Tgl Faktur</th><th>Jatuh Tempo</th>
+              <th>Total</th><th>Dibayar</th><th>Diskon</th><th>Denda</th><th>Sisa</th>
+              <th>Syarat</th><th>Status</th><th>Hari Sisa</th><th>Lewat Tempo</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</main>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js" defer></script>
+<script src="../backend/app.js" defer></script>
+<script src="./script.js" defer></script>
+<script>document.addEventListener('DOMContentLoaded', () => window.lucide?.createIcons());</script>
+</body>
+</html>

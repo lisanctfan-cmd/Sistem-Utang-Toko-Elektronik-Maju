@@ -124,23 +124,25 @@ function hitungDiskon(invoice, tanggalBayar, sisaUtang = invoice.total_amount, j
     const tarif = diskonPersen / 100;
     const sisaSebelum = Math.max(0, Number(sisaUtang) || 0);
     const diskonPenuh = Math.round(sisaSebelum * tarif * 100) / 100;
-    let diskonRp = diskonPenuh;
-    if (jumlahBayar !== null) {
-      const bayar = Math.max(0, Number(jumlahBayar) || 0);
-      const bayarUntukLunas = Math.round((sisaSebelum - diskonPenuh) * 100) / 100;
-      if (Math.abs(bayar - bayarUntukLunas) <= 0.01) {
-        diskonRp = diskonPenuh;
-      } else if (bayar < bayarUntukLunas) {
-        const nilaiKotorTerbayar = bayar / (1 - tarif);
-        diskonRp = Math.min(diskonPenuh, Math.round((nilaiKotorTerbayar - bayar) * 100) / 100);
-      } else {
-        diskonRp = 0;
-      }
+    const bayar = jumlahBayar === null ? null : Math.max(0, Number(jumlahBayar) || 0);
+    const bayarUntukLunas = Math.round((sisaSebelum - diskonPenuh) * 100) / 100;
+    const melunasiDenganDiskon = bayar !== null && Math.abs(bayar - bayarUntukLunas) <= 0.01;
+    if (!melunasiDenganDiskon) {
+      return {
+        berhak: false,
+        diskonRp: 0,
+        sisaSetelahDiskon: Math.max(0, Math.round((sisaSebelum - (bayar || 0)) * 100) / 100),
+        hariKe,
+        diskonPersen,
+        diskonHari,
+        menungguPelunasan: true
+      };
     }
+
     return {
       berhak: true,
-      diskonRp,
-      sisaSetelahDiskon: Math.max(0, Math.round((sisaSebelum - (Number(jumlahBayar) || 0) - diskonRp) * 100) / 100),
+      diskonRp: diskonPenuh,
+      sisaSetelahDiskon: 0,
       hariKe,
       diskonPersen,
       diskonHari
