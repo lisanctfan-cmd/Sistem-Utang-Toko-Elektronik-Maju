@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sistem Utang Toko Elektronik Maju</title>
+<title>Sistem Utang Usaha — Toko Elektronik Maju</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&family=Lora:wght@500;600;700&display=swap" rel="stylesheet">
@@ -17,7 +17,7 @@
     <a class="sidebar-brand" href="#dashboard" onclick="activateTab('dashboard'); return false;">
       <span class="brand-mark"><i data-lucide="wallet"></i></span>
       <span class="brand-copy">
-        <strong>Sistem Utang</strong>
+        <strong>Sistem Utang Usaha</strong>
         <span>Toko Elektronik Maju</span>
       </span>
     </a>
@@ -26,7 +26,7 @@
     <nav class="sidebar-nav tabs" aria-label="Navigasi utama">
       <button type="button" class="sidebar-link tab active" data-tab="dashboard"><i data-lucide="layout-dashboard"></i><span>Dashboard</span></button>
       <button type="button" class="sidebar-link tab" data-tab="supplier"><i data-lucide="users"></i><span>Supplier</span></button>
-      <button type="button" class="sidebar-link tab" data-tab="invoice"><i data-lucide="file-text"></i><span>Faktur &amp; Utang</span></button>
+      <button type="button" class="sidebar-link tab" data-tab="invoice"><i data-lucide="file-text"></i><span>Faktur &amp; Utang Usaha</span></button>
       <button type="button" class="sidebar-link tab" data-tab="payment"><i data-lucide="credit-card"></i><span>Pembayaran</span></button>
       <button type="button" class="sidebar-link tab" data-tab="laporan"><i data-lucide="bar-chart-3"></i><span>Laporan</span></button>
     </nav>
@@ -55,7 +55,7 @@
     <div class="dashboard-hero">
       <div class="hero-copy">
         <h1>Selamat datang di<br><span>Toko Elektronik Maju</span></h1>
-        <p class="hero-description">Kelola utang dan pembayaran dengan lebih mudah.</p>
+        <p class="hero-description">Kelola utang usaha dan pembayarannya dengan lebih mudah.</p>
       </div>
       <div class="hero-visual">
         <img src="./assets/appliance-products.png" alt="Pilihan produk elektronik rumah tangga">
@@ -65,7 +65,7 @@
     <div class="page-heading-row">
       <div>
         <h2 class="page-title">Notifikasi</h2>
-        <p class="page-subtitle">Pengingat jatuh tempo, batas syarat pembayaran, dan utang terlambat</p>
+        <p class="page-subtitle">Pengingat jatuh tempo, batas syarat pembayaran, dan utang usaha terlambat</p>
       </div>
       <div class="metric-pill">
         <span class="metric-pill-label">Perlu Tindakan:</span>
@@ -131,8 +131,8 @@
   <section id="invoice" class="tab-content">
     <div class="page-heading-row">
       <div>
-        <h1 class="page-title">Faktur & Utang</h1>
-        <p class="page-subtitle">Pencatatan utang dan syarat pembayaran</p>
+        <h1 class="page-title">Faktur &amp; Utang Usaha</h1>
+        <p class="page-subtitle">Pencatatan utang usaha dan syarat pembayaran</p>
       </div>
     </div>
 
@@ -145,7 +145,7 @@
         <input type="hidden" id="inv-current-bukti-url">
         <div class="form-grid">
           <label class="field-group span-2">
-            <span class="field-label">Nama Utang / Deskripsi Barang <span class="field-req">*</span></span>
+            <span class="field-label">Nama Utang Usaha / Deskripsi Barang <span class="field-req">*</span></span>
             <input type="text" id="inv-nama-utang" placeholder="Contoh: Pembelian Smart TV" required>
           </label>
           <label class="field-group">
@@ -165,7 +165,7 @@
             <input type="date" id="inv-jatuh-tempo" lang="id-ID" required>
           </label>
           <label class="field-group">
-            <span class="field-label">Total Utang (Rp) <span class="field-req">*</span></span>
+            <span class="field-label">Total Utang Usaha (Rp) <span class="field-req">*</span></span>
             <input type="number" id="inv-total" placeholder="0" step="0.01" required>
           </label>
           <label class="field-group">
@@ -192,7 +192,7 @@
         <table id="tabel-invoice">
           <thead>
             <tr>
-              <th>Nama Utang</th><th>Supplier</th><th>No Faktur</th><th>Tgl Faktur</th><th>Jatuh Tempo</th>
+              <th>Nama Utang Usaha</th><th>Supplier</th><th>No Faktur</th><th>Tgl Faktur</th><th>Jatuh Tempo</th>
               <th>Total</th><th>Syarat</th><th>Sisa</th><th>Status</th><th>Aksi</th>
             </tr>
           </thead>
@@ -207,19 +207,19 @@
     <div class="page-heading-row">
       <div>
         <h1 class="page-title">Pembayaran</h1>
-        <p class="page-subtitle">Pencatatan pembayaran utang secara lunas atau termin</p>
+        <p class="page-subtitle">Pencatatan pembayaran utang usaha secara lunas atau termin</p>
       </div>
     </div>
 
     <div class="clean-card">
       <div class="card-head">
-        <h2 class="card-heading">Form Pembayaran Utang</h2>
+        <h2 class="card-heading">Form Pembayaran Utang Usaha</h2>
       </div>
       <form id="form-payment" class="form-layout">
         <input type="hidden" id="pay-id">
         <div class="form-grid">
           <label class="field-group span-2">
-            <span class="field-label">Pilih Faktur Belum Lunas <span class="field-req">*</span></span>
+            <span class="field-label">Pilih Faktur Utang Usaha Belum Lunas <span class="field-req">*</span></span>
             <select id="pay-invoice" required></select>
           </label>
           <div id="pay-info" class="info-alert span-2" hidden></div>
@@ -263,7 +263,7 @@
       <div class="table-wrap">
         <table id="tabel-payment">
           <thead>
-            <tr><th>Tanggal</th><th>Nama Utang</th><th>No Faktur</th><th>Supplier</th><th>Jumlah</th><th>Diskon</th><th>Denda</th><th>Metode</th><th>Keterangan</th><th>Aksi</th></tr>
+            <tr><th>Tanggal</th><th>Nama Utang Usaha</th><th>No Faktur</th><th>Supplier</th><th>Jumlah</th><th>Diskon</th><th>Denda</th><th>Metode</th><th>Keterangan</th><th>Aksi</th></tr>
           </thead>
           <tbody></tbody>
         </table>
@@ -276,7 +276,7 @@
     <div class="page-heading-row">
       <div>
         <h1 class="page-title">Laporan</h1>
-        <p class="page-subtitle">Rekapitulasi historis utang</p>
+        <p class="page-subtitle">Rekapitulasi historis utang usaha</p>
       </div>
     </div>
 
@@ -338,7 +338,7 @@
         <table id="tabel-laporan">
           <thead>
             <tr>
-              <th>Nama Utang</th><th>No Faktur</th><th>Supplier</th><th>Tgl Faktur</th><th>Jatuh Tempo</th>
+              <th>Nama Utang Usaha</th><th>No Faktur</th><th>Supplier</th><th>Tgl Faktur</th><th>Jatuh Tempo</th>
               <th>Total</th><th>Dibayar</th><th>Diskon</th><th>Denda</th><th>Sisa</th>
               <th>Syarat</th><th>Status</th><th>Hari Sisa</th><th>Lewat Tempo</th>
             </tr>

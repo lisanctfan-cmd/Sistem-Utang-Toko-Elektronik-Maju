@@ -82,7 +82,7 @@ const tabHeadings = {
   supplier: 'Data Supplier',
   invoice: 'Faktur & Utang Usaha',
   payment: 'Pencatatan Pembayaran',
-  laporan: 'Laporan Historis Utang'
+  laporan: 'Laporan Historis Utang Usaha'
 };
 
 function activateTab(tabName) {
@@ -320,8 +320,8 @@ async function loadInvoicesData() {
   }).join('') || '<tr><td colspan="10" style="text-align:center">Belum ada faktur</td></tr>';
 
   unpaidInvoices = data.filter(inv => getInvoiceBalance(inv, inv.payments) > 0.009);
-  document.getElementById('pay-invoice').innerHTML = '<option value="">-- Pilih nama utang --</option>' + unpaidInvoices.map(inv => {
-    const label = `${inv.nama_utang || 'Utang'} | ${inv.suppliers?.nama || '-'} | ${inv.nomor_faktur} | Sisa ${formatRp(getInvoiceBalance(inv, inv.payments))}`;
+  document.getElementById('pay-invoice').innerHTML = '<option value="">-- Pilih nama utang usaha --</option>' + unpaidInvoices.map(inv => {
+    const label = `${inv.nama_utang || 'Utang usaha'} | ${inv.suppliers?.nama || '-'} | ${inv.nomor_faktur} | Sisa ${formatRp(getInvoiceBalance(inv, inv.payments))}`;
     return `<option value="${inv.id}">${label}</option>`;
   }).join('');
 }
@@ -367,13 +367,13 @@ function renderPaymentInfo() {
   const diskonInfo = !disk || parsedTerms.diskonBertingkat.length === 0
     ? ''
     : disk.menungguJumlahBayar
-      ? `<br>Diskon ${disk.diskonPersen}% berlaku pada nominal utang yang dilunasi selama periode syarat.`
+      ? `<br>Diskon ${disk.diskonPersen}% berlaku pada nominal utang usaha yang dilunasi selama periode syarat.`
       : disk.berhak
-        ? `<br>Utang dilunasi: <b>${formatRp(disk.nominalUtangDilunasi)}</b> | Diskon: <b>${formatRp(disk.diskonRp)}</b> (${disk.diskonPersen}%)`
+        ? `<br>Utang usaha dilunasi: <b>${formatRp(disk.nominalUtangDilunasi)}</b> | Diskon: <b>${formatRp(disk.diskonRp)}</b> (${disk.diskonPersen}%)`
         : '<br>Pembayaran tidak berada pada periode diskon.';
 
   infoBox.innerHTML = `
-    <strong>${invoice.nama_utang || 'Utang'} — ${invoice.suppliers?.nama || '-'}</strong><br>
+    <strong>${invoice.nama_utang || 'Utang usaha'} — ${invoice.suppliers?.nama || '-'}</strong><br>
     No. faktur: ${invoice.nomor_faktur}<br>
     Total: ${formatRp(invoice.total_amount)} | Dibayar: ${formatRp(dibayar)} | Sisa: <b>${formatRp(sisa)}</b><br>
     Jatuh tempo: ${formatTanggal(invoice.tanggal_jatuh_tempo)} (${sisaHari >= 0 ? sisaHari + ' hari lagi' : 'TERLAMBAT ' + Math.abs(sisaHari) + ' hari'})<br>
@@ -388,7 +388,7 @@ async function openPaymentForInvoice(invoiceId) {
     await loadInvoices();
     invoice = unpaidInvoices.find(item => String(item.id) === String(invoiceId));
   }
-  if (!invoice) return toast('Faktur ini sudah tidak memiliki sisa utang.', 'error');
+  if (!invoice) return toast('Faktur ini sudah tidak memiliki sisa utang usaha.', 'error');
 
   document.getElementById('form-payment').reset();
   resetPaymentEdit();
@@ -514,7 +514,7 @@ async function loadPaymentHistory() {
 }
 
 async function hapusPembayaran(id) {
-  if (!confirm('Hapus transaksi pembayaran ini? Saldo utang akan dihitung ulang.')) return;
+  if (!confirm('Hapus transaksi pembayaran ini? Saldo utang usaha akan dihitung ulang.')) return;
   if (!ensureSupabaseReady()) return;
 
   const { error } = await db.from('payments').delete().eq('id', id);
@@ -547,7 +547,7 @@ async function editPayment(id) {
   if (!Array.from(invoiceSelect.options).some(option => option.value === String(invoice.id))) {
     const option = document.createElement('option');
     option.value = invoice.id;
-    option.textContent = `${invoice.nama_utang || 'Utang'} | ${invoice.suppliers?.nama || '-'} | ${invoice.nomor_faktur}`;
+    option.textContent = `${invoice.nama_utang || 'Utang usaha'} | ${invoice.suppliers?.nama || '-'} | ${invoice.nomor_faktur}`;
     invoiceSelect.append(option);
   }
 
@@ -665,13 +665,13 @@ async function loadDashboard() {
           <span class="notification-label">${notification.label}</span>
           <time>${notification.noticeDate}</time>
         </div>
-        <h3>${notification.invoice.nama_utang || 'Utang tanpa nama'}</h3>
+        <h3>${notification.invoice.nama_utang || 'Utang usaha tanpa nama'}</h3>
         <p>${notification.invoice.suppliers?.nama || '-'} · Faktur ${notification.invoice.nomor_faktur}</p>
         <p>${notification.message}</p>
       </div>
-      <div class="notification-balance"><span>Sisa utang</span><strong>${formatRp(notification.balance)}</strong></div>
+      <div class="notification-balance"><span>Sisa utang usaha</span><strong>${formatRp(notification.balance)}</strong></div>
       <button class="notification-action" type="button" onclick="openPaymentForInvoice(${Number(notification.invoice.id)})">Catat pembayaran</button>
-    </article>`).join('') || '<div class="notification-empty"><strong>Tidak ada yang mendesak</strong><br>Utang belum lunas yang mendekati jatuh tempo atau batas diskon akan muncul di sini.</div>';
+    </article>`).join('') || '<div class="notification-empty"><strong>Tidak ada yang mendesak</strong><br>Utang usaha belum lunas yang mendekati jatuh tempo atau batas diskon akan muncul di sini.</div>';
 }
 
 function hitungHariAntartanggal(tanggalAwal, tanggalAkhir) {
@@ -923,8 +923,8 @@ document.getElementById('btn-export')?.addEventListener('click', async () => {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'Toko Elektronik Maju';
   workbook.calcProperties.fullCalcOnLoad = true;
-  const worksheet = workbook.addWorksheet('Laporan Utang', { views: [{ state: 'frozen', ySplit: 4 }] });
-  const headers = ['No', 'Nama Utang', 'No Faktur', 'Supplier', 'Tgl Faktur', 'Jatuh Tempo', 'Total (Rp)', 'Dibayar (Rp)', 'Diskon (Rp)', 'Denda (Rp)', 'Sisa (Rp)', 'Syarat', 'Status', 'Hari Sisa', 'Lewat Tempo'];
+  const worksheet = workbook.addWorksheet('Laporan Utang Usaha', { views: [{ state: 'frozen', ySplit: 4 }] });
+  const headers = ['No', 'Nama Utang Usaha', 'No Faktur', 'Supplier', 'Tgl Faktur', 'Jatuh Tempo', 'Total (Rp)', 'Dibayar (Rp)', 'Diskon (Rp)', 'Denda (Rp)', 'Sisa (Rp)', 'Syarat', 'Status', 'Hari Sisa', 'Lewat Tempo'];
   const moneyFormat = '#,##0.00;[Red](#,##0.00)';
   worksheet.columns = [8, 28, 17, 22, 15, 16, 18, 18, 16, 16, 18, 16, 18, 13, 15].map(width => ({ width }));
 
@@ -1055,7 +1055,7 @@ document.getElementById('btn-export-pdf')?.addEventListener('click', () => {
 
   const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   pdf.setFontSize(16);
-  pdf.text('Laporan Utang — Toko Elektronik Maju', 12, 14);
+  pdf.text('Laporan Utang Usaha — Toko Elektronik Maju', 12, 14);
   pdf.setFontSize(9);
   pdf.text(`Tanggal cetak: ${formatTanggal(todayStr())}`, 12, 20);
   pdf.autoTable({

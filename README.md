@@ -1,4 +1,4 @@
-# Sistem Pencatatan Utang — Toko Elektronik
+# Sistem Utang Usaha — Toko Elektronik Maju
 
 Aplikasi web berbasis klien (*client-side web application*) untuk mengelola pencatatan utang usaha, data supplier, pelunasan pembayaran dengan perhitungan diskon dan denda akuntansi otomatis, serta rekapitulasi laporan historis dengan ekspor Excel dan PDF. Sistem ini terintegrasi langsung dengan database cloud **Supabase (PostgreSQL)**.
 
@@ -7,7 +7,7 @@ Aplikasi web berbasis klien (*client-side web application*) untuk mengelola penc
 ## 📌 Fitur Utama
 
 ### 1. Dashboard & Notifikasi Otomatis
-- **Peringatan Jatuh Tempo (*Due Soon*)**: Notifikasi otomatis untuk utang yang akan jatuh tempo dalam waktu $\le 7$ hari.
+- **Peringatan Jatuh Tempo (*Due Soon*)**: Notifikasi otomatis untuk utang usaha yang akan jatuh tempo dalam waktu $\le 7$ hari.
 - **Peringatan Batas Diskon (*Discount Soon*)**: Notifikasi otomatis jika pembayaran masih dalam masa periode potongan/diskon termin (peringatan $\le 3$ hari sebelum batas diskon berakhir).
 - **Peringatan Keterlambatan (*Overdue*)**: Deteksi dan pemberitahuan faktur yang telah melewati tanggal jatuh tempo dengan penghitungan jumlah hari keterlambatan.
 - **Tindakan Cepat (*Quick Action*)**: Tombol navigasi langsung ke menu pembayaran dari setiap kartu notifikasi.
@@ -19,8 +19,8 @@ Aplikasi web berbasis klien (*client-side web application*) untuk mengelola penc
 - Tampilan tabel daftar supplier yang terhubung secara dinamis ke pilihan faktur.
 
 ### 3. Pencatatan Faktur & Utang Usaha
-- Pencatatan utang berdasarkan supplier yang dipilih.
-- Input data faktur: Nama Utang, Nomor Faktur, Tanggal Faktur, Tanggal Jatuh Tempo, Total Nominal Utang, Syarat Pembayaran, dan Keterangan.
+- Pencatatan utang usaha berdasarkan supplier yang dipilih.
+- Input data faktur: Nama Utang Usaha, Nomor Faktur, Tanggal Faktur, Tanggal Jatuh Tempo, Total Nominal Utang Usaha, Syarat Pembayaran, dan Keterangan.
 - **Syarat Pembayaran Fleksibel**:
   - Mendukung termin diskon akuntansi (contoh: `2/10 n/30`, `5/15`, `3/15 n/60`, `EOM`, `COD`).
   - Bersifat opsional: jika tidak diisi, sistem otomatis menampilkan tanda strip (`-`) tanpa memaksakan nilai bawaan termin.
@@ -31,22 +31,22 @@ Aplikasi web berbasis klien (*client-side web application*) untuk mengelola penc
 - Edit dan hapus data faktur.
 
 ### 4. Pencatatan Pembayaran & Pelunasan
-- Pilihan faktur belum lunas dengan informasi saldo sisa utang secara *real-time*.
+- Pilihan faktur belum lunas dengan informasi saldo sisa utang usaha secara *real-time*.
 - **Kalkulasi Diskon Otomatis**: Menghitung hak potongan pembayaran sesuai tanggal bayar terhadap syarat termin faktur.
 - **Denda Keterlambatan**: Input nominal denda jika pembayaran dilakukan setelah tanggal jatuh tempo.
 - **Metode Pembayaran**: Mendukung pilihan *Transfer Bank*, *Tunai*, dan *Giro / Cek*.
 - Validasi pembayaran agar tidak melebihi sisa tagihan.
-- Riwayat transaksi pembayaran lengkap dengan fitur edit dan hapus pembayaran (saldo utang otomatis dihitung ulang).
+- Riwayat transaksi pembayaran lengkap dengan fitur edit dan hapus pembayaran (saldo utang usaha otomatis dihitung ulang).
 
-### 5. Laporan Historis Utang & Filter Periode
+### 5. Laporan Historis Utang Usaha & Filter Periode
 - **Filter Status**: Tampilkan semua, hanya belum lunas, lunas, atau jatuh tempo.
 - **Filter Rentang Tanggal**: Berdasarkan *Tanggal Faktur* atau *Tanggal Jatuh Tempo* (Dari Tanggal s/d Sampai Tanggal).
 - **Tombol Pintas Periode**: Filter instan untuk *Semua*, *Bulan Ini*, *Bulan Lalu*, dan *Tahun Ini*.
 - **Kartu Ringkasan Metrik**:
   - Total Faktur Terpilih
-  - Total Nilai Utang
+  - Total Nilai Utang Usaha
   - Total Sudah Dibayar
-  - Sisa Utang Belum Lunas
+  - Sisa Utang Usaha Belum Lunas
 - Kolom metrik hari: Penghitungan hari tersisa menuju jatuh tempo dan hari lewat tempo.
 
 ### 6. Ekspor Laporan
@@ -96,7 +96,7 @@ Menyediakan modul `window.AppLogic` yang berisi fungsi-fungsi murni (*pure funct
 - Mengelola koneksi klien Supabase melalui `supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)`.
 - Pengelolaan tab navigasi (`dashboard`, `supplier`, `invoice`, `payment`, `laporan`).
 - Operasi CRUD tabel `suppliers`, `invoices`, dan `payments`.
-- Kalkulasi dinamis saldo utang (`total_amount + denda - (dibayar + diskon)`).
+- Kalkulasi dinamis saldo utang usaha (`total_amount + denda - (dibayar + diskon)`).
 - Penanganan ekspor file Excel berbasis XML Spreadsheet HTML Template dan PDF via jsPDF AutoTable.
 - Komponen notifikasi mengambang (*Toast Notification*).
 
@@ -112,7 +112,7 @@ Membuat tiga tabel yang sesuai dengan menu data aplikasi: `suppliers`, `invoices
 
 ## 🗄️ Skema Database (Supabase PostgreSQL)
 
-`backend/database.sql` membuat tiga tabel data: `suppliers` untuk menu Supplier, `invoices` untuk menu Faktur & Utang, dan `payments` untuk menu Pembayaran. Data dashboard dan laporan dihitung dari tabel-tabel ini.
+`backend/database.sql` membuat tiga tabel data: `suppliers` untuk menu Supplier, `invoices` untuk menu Faktur & Utang Usaha, dan `payments` untuk menu Pembayaran. Data dashboard dan laporan dihitung dari tabel-tabel ini.
 
 ---
 
