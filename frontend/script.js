@@ -77,6 +77,10 @@ function initTomSelect(id, extraOptions = {}) {
     onItemAdd: function() {
       this.setTextboxValue('');
       this.refreshOptions(false);
+      this.blur();
+    },
+    onDropdownClose: function() {
+      this.setTextboxValue('');
     },
     render: {
       option_create: function(data, escape) {

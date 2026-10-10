@@ -1553,14 +1553,15 @@ tr:hover td { background: #f8fafd; }
   padding: 0 !important;
   margin: 0 !important;
   line-height: 36px !important;
-  width: 100% !important;
-  flex: 1 1 auto !important;
-  display: block !important;
+  max-width: 100% !important;
+  flex: 0 1 auto !important;
+  display: inline-block !important;
 }
 
-/* Sembunyikan item lama hanya saat sedang aktif mengetik query baru */
-.ts-wrapper.single.input-active .ts-control .item {
-  display: none !important;
+/* Pastikan item terpilih selalu terlihat jelas */
+.ts-wrapper.single.has-items .ts-control .item {
+  display: inline-block !important;
+  opacity: 1 !important;
 }
 
 /* Input ketikan */
@@ -1576,10 +1577,11 @@ tr:hover td { background: #f8fafd; }
   outline: none !important;
   box-shadow: none !important;
   background: transparent !important;
+  min-width: 4px !important;
 }
 
-/* Saat ada item terpilih dan tidak sedang mengetik, sembunyikan input agar item terlihat utuh */
-.ts-wrapper.single.has-items:not(.input-active) .ts-control input {
+/* Saat ada item terpilih dan tidak sedang fokus/mengetik, sembunyikan input */
+.ts-wrapper.single.has-items:not(.input-active):not(.focus) .ts-control input {
   position: absolute !important;
   left: -9999px !important;
   opacity: 0 !important;
@@ -1587,7 +1589,7 @@ tr:hover td { background: #f8fafd; }
   pointer-events: none !important;
 }
 
-/* Saat sedang mengetik atau belum ada item, tampilkan input penuh */
+/* Saat sedang mengetik atau belum ada item, tampilkan input */
 .ts-wrapper.single.input-active .ts-control input,
 .ts-wrapper.single:not(.has-items) .ts-control input {
   position: static !important;
