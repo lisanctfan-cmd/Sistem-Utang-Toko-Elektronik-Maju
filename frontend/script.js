@@ -19,8 +19,27 @@ const db = isSupabaseConfigured() ? supabase.createClient(SUPABASE_URL, SUPABASE
 let unpaidInvoices = [];
 let loadedInvoices = [];
 let loadedSuppliers = [];
+let loadedCategories = [];
+let loadedProducts = [];
+let loadedPaymentHistory = [];
+let cachedFilteredLaporanRows = [];
 let selectedPaymentInvoice = null;
 let invoicesLoadPromise = null;
+
+let currentSupplierPage = 1;
+const SUPPLIER_PER_PAGE = 5;
+
+let currentProductPage = 1;
+const PRODUCT_PER_PAGE = 5;
+
+let currentInvoicePage = 1;
+const INVOICE_PER_PAGE = 5;
+
+let currentPaymentPage = 1;
+const PAYMENT_PER_PAGE = 5;
+
+let currentLaporanPage = 1;
+const LAPORAN_PER_PAGE = 5;
 
 var {
   parseSyaratPembayaran, addDays, hitungTanggalJatuhTempo, tanggalHariIni, diffDays,
@@ -35,6 +54,66 @@ function toast(msg, type = '') {
   t.textContent = msg;
   t.className = 'toast show ' + type;
   setTimeout(() => t.className = 'toast ' + type, 2500);
+}
+
+function initTomSelect(id, extraOptions = {}) {
+  const el = document.getElementById(id);
+  if (!el || typeof TomSelect === 'undefined') return null;
+
+  if (el.tomselect) {
+    el.tomselect.destroy();
+  }
+
+  const defaultOptions = {
+    create: false,
+    maxItems: 1,
+    allowEmptyOption: true,
+    openOnFocus: true,
+    closeAfterSelect: true,
+    selectOnTab: true,
+    searchField: ['text'],
+    highlight: true,
+    render: {
+      option_create: function(data, escape) {
+        return '<div class="create">+ Gunakan baru: <strong>' + escape(data.input) + '</strong></div>';
+      },
+      no_results: function(data, escape) {
+        return '<div class="no-results">Tidak ada pilihan yang cocok dengan "' + escape(data.input) + '"</div>';
+      }
+    }
+  };
+
+  const ts = new TomSelect('#' + id, Object.assign({}, defaultOptions, extraOptions));
+  return ts;
+}
+
+function syncTomSelectVal(id, val, silent = true) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const strVal = (val === null || val === undefined) ? '' : String(val);
+  if (el.tomselect) {
+    el.tomselect.setValue(strVal, silent);
+  } else {
+    el.value = strVal;
+  }
+}
+
+function renderPaginationBar(containerId, currentPage, totalItems, perPage, changePageFnName) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  const totalPages = Math.ceil(totalItems / perPage);
+  if (totalPages <= 1) {
+    container.innerHTML = '';
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="pagination-wrap">
+      <button type="button" class="btn btn-secondary btn-sm" onclick="${changePageFnName}(-1)" ${currentPage <= 1 ? 'disabled' : ''}>&larr; Sebelumnya</button>
+      <span class="pagination-info">Halaman <strong>${currentPage}</strong> dari <strong>${totalPages}</strong> (Total: ${totalItems})</span>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="${changePageFnName}(1)" ${currentPage >= totalPages ? 'disabled' : ''}>Selanjutnya &rarr;</button>
+    </div>`;
 }
 
 function formatSyarat(syarat) {
@@ -80,6 +159,7 @@ function getInvoiceBalance(invoice, payments = []) {
 const tabHeadings = {
   dashboard: 'Dashboard Ringkasan',
   supplier: 'Data Supplier',
+  barang: 'Data Barang',
   invoice: 'Faktur & Utang Usaha',
   payment: 'Pencatatan Pembayaran',
   laporan: 'Laporan Historis Utang Usaha'
@@ -104,6 +184,7 @@ function activateTab(tabName) {
   // Auto close mobile drawer when link clicked
   document.getElementById('sidebar')?.classList.remove('open');
 
+  if (tabName === 'barang') loadProducts();
   if (tabName === 'laporan') loadLaporan();
   if (tabName === 'dashboard') loadDashboard();
 }
@@ -117,7 +198,7 @@ function bindTabs() {
 }
 
 function goToNextTab() {
-  const tabOrder = ['dashboard', 'supplier', 'invoice', 'payment', 'laporan'];
+  const tabOrder = ['dashboard', 'supplier', 'barang', 'invoice', 'payment', 'laporan'];
   const activeTab = document.querySelector('.tab.active')?.dataset.tab || 'dashboard';
   const nextIndex = (tabOrder.indexOf(activeTab) + 1) % tabOrder.length;
   activateTab(tabOrder[nextIndex]);
@@ -131,18 +212,108 @@ async function loadSuppliers() {
 
   const { data, error } = await db.from('suppliers').select('*').order('id', { ascending: true });
   if (error) return toast('Gagal load supplier: ' + error.message, 'error');
-  loadedSuppliers = data;
+  loadedSuppliers = data || [];
 
+  currentSupplierPage = 1;
+  renderSupplierTable();
+  populateInvoiceSupplierOptions();
+  populateReportSupplierOptions();
+}
+
+function onSupplierSearch() {
+  currentSupplierPage = 1;
+  renderSupplierTable();
+}
+window.onSupplierSearch = onSupplierSearch;
+
+function getFilteredSuppliers() {
+  const query = (document.getElementById('search-supplier')?.value || '').toLowerCase().trim();
+  if (!query) return loadedSuppliers;
+  return loadedSuppliers.filter(s => {
+    const statusStr = s.is_active !== false ? 'aktif' : 'nonaktif';
+    return (s.nama || '').toLowerCase().includes(query) ||
+           (s.kontak || '').toLowerCase().includes(query) ||
+           (s.alamat || '').toLowerCase().includes(query) ||
+           statusStr.includes(query);
+  });
+}
+
+function renderSupplierTable() {
   const tbody = document.querySelector('#tabel-supplier tbody');
-  tbody.innerHTML = data.map(s => `
-    <tr>
-      <td><strong>${s.nama}</strong></td><td>${s.kontak || '-'}</td><td>${s.alamat || '-'}</td>
-      <td><button class="btn-sm" onclick="editSupplier(${s.id})">Edit</button> <button class="btn-danger btn-sm" onclick="hapusSupplier(${s.id})">Hapus</button></td>
-    </tr>`).join('') || '<tr><td colspan="4" style="text-align:center">Belum ada supplier</td></tr>';
+  if (!tbody) return;
 
+  const filtered = getFilteredSuppliers();
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center">Belum ada supplier yang cocok</td></tr>';
+    renderPaginationBar('supplier-pagination', 1, 0, SUPPLIER_PER_PAGE, 'changeSupplierPage');
+    return;
+  }
+
+  const start = (currentSupplierPage - 1) * SUPPLIER_PER_PAGE;
+  const pageItems = filtered.slice(start, start + SUPPLIER_PER_PAGE);
+
+  tbody.innerHTML = pageItems.map(s => `
+    <tr>
+      <td><strong>${s.nama}</strong></td>
+      <td>${s.kontak || '-'}</td>
+      <td>${s.alamat || '-'}</td>
+      <td><span class="badge ${s.is_active !== false ? 'aktif' : 'nonaktif'}">${s.is_active !== false ? 'Aktif' : 'Nonaktif'}</span></td>
+      <td><button class="btn-sm" onclick="editSupplier(${s.id})">Edit</button> <button class="btn-danger btn-sm" onclick="hapusSupplier(${s.id})">Hapus</button></td>
+    </tr>`).join('');
+
+  renderPaginationBar('supplier-pagination', currentSupplierPage, filtered.length, SUPPLIER_PER_PAGE, 'changeSupplierPage');
+}
+
+function changeSupplierPage(delta) {
+  const filtered = getFilteredSuppliers();
+  const totalPages = Math.ceil(filtered.length / SUPPLIER_PER_PAGE);
+  const target = currentSupplierPage + delta;
+  if (target >= 1 && target <= totalPages) {
+    currentSupplierPage = target;
+    renderSupplierTable();
+  }
+}
+window.changeSupplierPage = changeSupplierPage;
+
+function populateReportSupplierOptions() {
+  const sel = document.getElementById('filter-supplier');
+  if (!sel) return;
+  if (sel.tomselect) sel.tomselect.destroy();
+  const currentVal = sel.value;
+  sel.replaceChildren(new Option('Semua Supplier', 'all'));
+  loadedSuppliers.forEach(s => {
+    sel.add(new Option(s.nama, String(s.id)));
+  });
+  if (Array.from(sel.options).some(o => o.value === currentVal)) {
+    sel.value = currentVal;
+  } else {
+    sel.value = 'all';
+  }
+  initTomSelect('filter-supplier');
+  syncTomSelectVal('filter-supplier', sel.value);
+}
+
+function populateInvoiceSupplierOptions(selectedSupplierId = '') {
   const sel = document.getElementById('inv-supplier');
-  sel.innerHTML = '<option value="">-- Pilih Supplier --</option>' +
-    data.map(s => `<option value="${s.id}">${s.nama}</option>`).join('');
+  if (!sel) return;
+  if (sel.tomselect) sel.tomselect.destroy();
+  sel.replaceChildren(new Option('-- Pilih Supplier --', ''));
+
+  loadedSuppliers.filter(s => s.is_active !== false).forEach(s => {
+    sel.add(new Option(s.nama, String(s.id)));
+  });
+
+  const selectedSupplier = loadedSuppliers.find(s => String(s.id) === String(selectedSupplierId));
+  if (selectedSupplier && selectedSupplier.is_active === false) {
+    sel.add(new Option(`${selectedSupplier.nama} (Nonaktif - data lama)`, String(selectedSupplier.id)));
+  }
+
+  sel.value = selectedSupplierId ? String(selectedSupplierId) : '';
+  initTomSelect('inv-supplier');
+  if (sel.value) {
+    syncTomSelectVal('inv-supplier', sel.value);
+  }
 }
 
 document.getElementById('form-supplier').addEventListener('submit', async (e) => {
@@ -152,7 +323,8 @@ document.getElementById('form-supplier').addEventListener('submit', async (e) =>
   const payload = {
     nama: document.getElementById('sup-nama').value.trim(),
     kontak: document.getElementById('sup-kontak').value.trim() || null,
-    alamat: document.getElementById('sup-alamat').value.trim() || null
+    alamat: document.getElementById('sup-alamat').value.trim() || null,
+    is_active: document.getElementById('sup-active').value === 'true'
   };
 
   const supplierId = document.getElementById('sup-id').value;
@@ -172,6 +344,7 @@ document.getElementById('form-supplier').addEventListener('submit', async (e) =>
 
 function resetSupplierEdit() {
   document.getElementById('sup-id').value = '';
+  document.getElementById('sup-active').value = 'true';
   document.getElementById('btn-save-supplier').textContent = 'Simpan Supplier';
   document.getElementById('btn-cancel-supplier').hidden = true;
 }
@@ -184,6 +357,7 @@ function editSupplier(id) {
   document.getElementById('sup-nama').value = supplier.nama;
   document.getElementById('sup-kontak').value = supplier.kontak || '';
   document.getElementById('sup-alamat').value = supplier.alamat || '';
+  document.getElementById('sup-active').value = String(supplier.is_active !== false);
   document.getElementById('btn-save-supplier').textContent = 'Perbarui Supplier';
   document.getElementById('btn-cancel-supplier').hidden = false;
 }
@@ -208,11 +382,315 @@ async function hapusSupplier(id) {
   loadLaporan();
 }
 
+// ====== DATA BARANG ======
+
+// Ambil kategori dari localStorage (user-tambahan)
+function getSavedCategories() {
+  try { return JSON.parse(localStorage.getItem('saved_categories') || '[]'); }
+  catch (e) { return []; }
+}
+
+function saveCategories(list) {
+  localStorage.setItem('saved_categories', JSON.stringify(list));
+}
+
+// Semua kategori unik: dari localStorage + dari produk yang ada di DB
+function getAllCategories() {
+  const fromProducts = (loadedProducts || [])
+    .map(p => p.kategori)
+    .filter(k => k && k !== '-' && k.trim());
+  const fromSaved = getSavedCategories();
+  return Array.from(new Set([...fromSaved, ...fromProducts])).sort();
+}
+
+function updateCategorySuggestions() {
+  const cats = getAllCategories();
+
+  // Update dropdown select di form barang
+  const categorySelect = document.getElementById('product-category');
+  if (categorySelect) {
+    if (categorySelect.tomselect) categorySelect.tomselect.destroy();
+    const currentVal = categorySelect.value;
+    categorySelect.replaceChildren(new Option('-- Pilih Kategori --', ''));
+    cats.forEach(c => categorySelect.add(new Option(c, c)));
+    if (Array.from(categorySelect.options).some(o => o.value === currentVal)) {
+      categorySelect.value = currentVal;
+    }
+    initTomSelect('product-category', { create: true });
+    if (categorySelect.value) {
+      syncTomSelectVal('product-category', categorySelect.value);
+    }
+  }
+
+  // Update chips di panel kelola kategori
+  const chipsEl = document.getElementById('category-chips');
+  if (chipsEl) {
+    if (cats.length === 0) {
+      chipsEl.innerHTML = '<span style="color:#94a3b8; font-size:12.5px;">Belum ada kategori. Tambahkan kategori baru di atas.</span>';
+    } else {
+      chipsEl.innerHTML = cats.map(c => `
+        <span class="category-chip">
+          ${c}
+          <button type="button" class="chip-remove" onclick="hapusKategori('${c.replace(/'/g, "\\'")}')" title="Hapus kategori ini">×</button>
+        </span>`).join('');
+    }
+  }
+
+  // Update filter kategori di Laporan
+  populateReportCategoryOptions();
+}
+
+function tambahKategori() {
+  const input = document.getElementById('input-new-category');
+  if (!input) return;
+  const nama = input.value.trim();
+  if (!nama) return toast('Ketik nama kategori terlebih dahulu.', 'error');
+
+  const list = getSavedCategories();
+  const allCats = getAllCategories();
+  if (allCats.map(c => c.toLowerCase()).includes(nama.toLowerCase())) {
+    return toast(`Kategori "${nama}" sudah ada.`, 'error');
+  }
+  list.push(nama);
+  saveCategories(list);
+  input.value = '';
+  updateCategorySuggestions();
+  toast(`Kategori "${nama}" ditambahkan ✓`, 'success');
+}
+
+function hapusKategori(nama) {
+  const used = (loadedProducts || []).some(p => p.kategori === nama);
+  if (used && !confirm(`Kategori "${nama}" dipakai oleh beberapa barang. Tetap hapus dari daftar?`)) return;
+
+  const list = getSavedCategories().filter(c => c !== nama);
+  saveCategories(list);
+  updateCategorySuggestions();
+  toast(`Kategori "${nama}" dihapus dari daftar.`, 'success');
+}
+
+window.tambahKategori = tambahKategori;
+window.hapusKategori = hapusKategori;
+
+async function loadProducts() {
+  if (!ensureSupabaseReady()) return;
+
+  const { data, error } = await db
+    .from('products')
+    .select('*')
+    .order('nama', { ascending: true });
+  if (error) return toast('Gagal load barang: ' + error.message, 'error');
+  loadedProducts = data || [];
+
+  currentProductPage = 1;
+  renderProductTable();
+  updateCategorySuggestions();
+  populateInvoiceProductOptions();
+}
+
+function onProductSearch() {
+  currentProductPage = 1;
+  renderProductTable();
+}
+window.onProductSearch = onProductSearch;
+
+function getFilteredProducts() {
+  const query = (document.getElementById('search-product')?.value || '').toLowerCase().trim();
+  if (!query) return loadedProducts;
+  return loadedProducts.filter(p => {
+    const statusStr = p.is_active ? 'aktif' : 'nonaktif';
+    return (p.nama || '').toLowerCase().includes(query) ||
+           (p.kategori || '').toLowerCase().includes(query) ||
+           statusStr.includes(query);
+  });
+}
+
+function renderProductTable() {
+  const tbody = document.querySelector('#tabel-product tbody');
+  if (!tbody) return;
+
+  const filtered = getFilteredProducts();
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center">Belum ada barang yang cocok</td></tr>';
+    renderPaginationBar('product-pagination', 1, 0, PRODUCT_PER_PAGE, 'changeProductPage');
+    return;
+  }
+
+  const start = (currentProductPage - 1) * PRODUCT_PER_PAGE;
+  const pageItems = filtered.slice(start, start + PRODUCT_PER_PAGE);
+
+  tbody.innerHTML = pageItems.map(product => `
+    <tr>
+      <td><strong>${product.nama}</strong></td>
+      <td>${product.kategori && product.kategori !== '-' ? product.kategori : '-'}</td>
+      <td><span class="badge ${product.is_active ? 'aktif' : 'nonaktif'}">${product.is_active ? 'Aktif' : 'Nonaktif'}</span></td>
+      <td><button class="btn-sm" onclick="editProduct(${product.id})">Edit</button> <button class="btn-danger btn-sm" onclick="hapusProduct(${product.id})">Hapus</button></td>
+    </tr>`).join('');
+
+  renderPaginationBar('product-pagination', currentProductPage, filtered.length, PRODUCT_PER_PAGE, 'changeProductPage');
+}
+
+function changeProductPage(delta) {
+  const filtered = getFilteredProducts();
+  const totalPages = Math.ceil(filtered.length / PRODUCT_PER_PAGE);
+  const target = currentProductPage + delta;
+  if (target >= 1 && target <= totalPages) {
+    currentProductPage = target;
+    renderProductTable();
+  }
+}
+window.changeProductPage = changeProductPage;
+
+function populateReportCategoryOptions() {
+  const sel = document.getElementById('filter-category');
+  if (!sel) return;
+  if (sel.tomselect) sel.tomselect.destroy();
+  const currentVal = sel.value;
+  const cats = getAllCategories();
+  sel.replaceChildren(new Option('Semua Kategori', 'all'));
+  cats.forEach(c => sel.add(new Option(c, c)));
+  if (Array.from(sel.options).some(o => o.value === currentVal)) {
+    sel.value = currentVal;
+  } else {
+    sel.value = 'all';
+  }
+  initTomSelect('filter-category');
+  syncTomSelectVal('filter-category', sel.value);
+}
+
+function populateInvoiceProductOptions(selectedProductId = '', legacyName = '') {
+  const select = document.getElementById('inv-product');
+  if (!select) return;
+  if (select.tomselect) select.tomselect.destroy();
+  select.replaceChildren(new Option('-- Pilih Barang Aktif --', ''));
+
+  loadedProducts.filter(product => product.is_active).forEach(product => {
+    const categoryInfo = product.kategori && product.kategori !== '-' ? ` (${product.kategori})` : '';
+    select.add(new Option(`${product.nama}${categoryInfo}`, String(product.id)));
+  });
+
+  const selectedProduct = loadedProducts.find(product => String(product.id) === String(selectedProductId));
+  if (selectedProduct && !selectedProduct.is_active) {
+    select.add(new Option(`${selectedProduct.nama} (Nonaktif - faktur lama)`, String(selectedProduct.id)));
+  } else if (legacyName && !selectedProductId) {
+    select.add(new Option(`${legacyName} (Data faktur lama)`, 'legacy'));
+  }
+
+  select.value = selectedProductId ? String(selectedProductId) : legacyName ? 'legacy' : '';
+  initTomSelect('inv-product');
+  if (select.value) {
+    syncTomSelectVal('inv-product', select.value);
+  }
+}
+
+document.getElementById('form-product').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!ensureSupabaseReady()) return;
+
+  const categoryVal = document.getElementById('product-category').value.trim() || '-';
+  const productId = document.getElementById('product-id').value;
+  const payload = {
+    nama: document.getElementById('product-name').value.trim(),
+    kategori: categoryVal,
+    is_active: document.getElementById('product-active').value === 'true'
+  };
+
+  const result = productId
+    ? await db.from('products').update(payload).eq('id', productId)
+    : await db.from('products').insert(payload);
+  if (result.error) return toast('Gagal menyimpan barang: ' + result.error.message, 'error');
+
+  // Jika kategori baru, simpan ke saved_categories
+  if (categoryVal && categoryVal !== '-') {
+    const list = getSavedCategories();
+    if (!getAllCategories().map(c => c.toLowerCase()).includes(categoryVal.toLowerCase())) {
+      list.push(categoryVal);
+      saveCategories(list);
+    }
+  }
+
+  toast(productId ? 'Barang diperbarui ✓' : 'Barang ditambahkan ✓', 'success');
+  event.target.reset();
+  resetProductEdit();
+  await loadProducts();
+});
+
+function resetProductEdit() {
+  document.getElementById('product-id').value = '';
+  syncTomSelectVal('product-category', '');
+  document.getElementById('product-active').value = 'true';
+  document.getElementById('btn-save-product').textContent = 'Simpan Barang';
+  document.getElementById('btn-cancel-product').hidden = true;
+}
+
+function editProduct(id) {
+  const product = loadedProducts.find(item => String(item.id) === String(id));
+  if (!product) return toast('Barang tidak ditemukan.', 'error');
+  document.getElementById('product-id').value = product.id;
+  document.getElementById('product-name').value = product.nama;
+  syncTomSelectVal('product-category', product.kategori && product.kategori !== '-' ? product.kategori : '');
+  document.getElementById('product-active').value = String(product.is_active);
+  document.getElementById('btn-save-product').textContent = 'Simpan Perubahan';
+  document.getElementById('btn-cancel-product').hidden = false;
+  // Scroll ke form
+  document.getElementById('form-product')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+window.editProduct = editProduct;
+
+async function hapusProduct(id) {
+  if (!confirm('Hapus barang ini? Data faktur terkait akan tetap aman.')) return;
+  if (!ensureSupabaseReady()) return;
+  const { error } = await db.from('products').delete().eq('id', id);
+  if (error) return toast('Gagal menghapus barang: ' + error.message, 'error');
+  toast('Barang dihapus', 'success');
+  loadProducts();
+  loadInvoices();
+}
+
+window.hapusProduct = hapusProduct;
+
+document.getElementById('btn-cancel-product').addEventListener('click', () => {
+  document.getElementById('form-product').reset();
+  resetProductEdit();
+});
+
 // ====== INVOICE ======
+
+function updateInvoiceTotal() {
+  const productSelect = document.getElementById('inv-product');
+  const product = loadedProducts.find(item => String(item.id) === productSelect.value);
+
+  if (product) document.getElementById('inv-nama-utang').value = product.nama;
+  else if (productSelect.value !== 'legacy') document.getElementById('inv-nama-utang').value = '';
+}
+
+document.getElementById('inv-product').addEventListener('change', updateInvoiceTotal);
 
 document.getElementById('form-invoice').addEventListener('submit', async (e) => {
   e.preventDefault();
   if (!ensureSupabaseReady()) return;
+
+  const invoiceId = document.getElementById('inv-id').value;
+  const selectedProductId = document.getElementById('inv-product').value;
+  const selectedProduct = loadedProducts.find(item => String(item.id) === selectedProductId);
+  const legacyProduct = selectedProductId === 'legacy';
+  if (!selectedProduct && !legacyProduct) return toast('Pilih barang dari daftar barang aktif.', 'error');
+  if (!invoiceId && selectedProduct && !selectedProduct.is_active) return toast('Barang nonaktif tidak bisa dipakai untuk faktur baru.', 'error');
+
+  if (selectedProduct) {
+    const { data: currentProduct, error: productError } = await db
+      .from('products')
+      .select('id, nama, is_active')
+      .eq('id', selectedProduct.id)
+      .single();
+    if (productError) return toast('Gagal memeriksa status barang: ' + productError.message, 'error');
+    if (!invoiceId && !currentProduct.is_active) return toast('Barang nonaktif tidak bisa dipakai untuk faktur baru.', 'error');
+    document.getElementById('inv-nama-utang').value = currentProduct.nama;
+  }
+
+  const totalAmount = Number(document.getElementById('inv-total').value);
+  if (!Number.isFinite(totalAmount) || totalAmount <= 0) return toast('Total utang usaha harus lebih dari 0.', 'error');
 
   const syarat = document.getElementById('inv-syarat').value.trim();
   const parsed = parseSyaratPembayaran(syarat);
@@ -221,11 +699,12 @@ document.getElementById('form-invoice').addEventListener('submit', async (e) => 
 
   const payload = {
     nama_utang: document.getElementById('inv-nama-utang').value.trim(),
+    product_id: selectedProduct ? Number(selectedProduct.id) : null,
     supplier_id: parseInt(document.getElementById('inv-supplier').value, 10),
     nomor_faktur: document.getElementById('inv-nomor').value.trim(),
     tanggal_faktur: tglFaktur,
     tanggal_jatuh_tempo: jatuhTempo,
-    total_amount: parseFloat(document.getElementById('inv-total').value),
+    total_amount: totalAmount,
     syarat_pembayaran: syarat || null,
     diskon_persen: parsed.diskonPersen || 0,
     diskon_hari: parsed.diskonHari || 0,
@@ -233,12 +712,18 @@ document.getElementById('form-invoice').addEventListener('submit', async (e) => 
     keterangan: document.getElementById('inv-keterangan').value.trim() || null
   };
 
-  const invoiceId = document.getElementById('inv-id').value;
   const { error } = invoiceId
     ? await db.from('invoices').update(payload).eq('id', invoiceId)
     : await db.from('invoices').insert(payload);
 
   if (error) return toast('Gagal simpan faktur: ' + error.message, 'error');
+
+  const supObj = loadedSuppliers.find(s => String(s.id) === String(payload.supplier_id));
+  const supName = supObj ? supObj.nama : 'Supplier';
+  const desc = invoiceId
+    ? `Memperbarui Faktur #${payload.nomor_faktur} (${payload.nama_utang}) - Total: ${formatRp(totalAmount)}`
+    : `Menambahkan Faktur #${payload.nomor_faktur} (${payload.nama_utang}) dari ${supName} - Total: ${formatRp(totalAmount)}`;
+  await logActivity(invoiceId ? 'Edit Faktur' : 'Tambah Faktur', desc);
 
   toast(invoiceId ? 'Faktur berhasil diperbarui ✓' : `Faktur tersimpan ✓ Jatuh tempo: ${formatTanggal(jatuhTempo)}`, 'success');
   e.target.reset();
@@ -252,19 +737,23 @@ function resetInvoiceEdit() {
   document.getElementById('inv-id').value = '';
   document.getElementById('btn-save-invoice').textContent = 'Simpan Faktur';
   document.getElementById('btn-cancel-invoice').hidden = true;
+  syncTomSelectVal('inv-product', '');
+  syncTomSelectVal('inv-supplier', '');
 }
 
 async function editInvoice(id) {
   const invoice = loadedInvoices.find(item => String(item.id) === String(id));
   if (!invoice) return toast('Faktur tidak ditemukan. Muat ulang daftar faktur.', 'error');
+  if (loadedProducts.length === 0) await loadProducts();
 
   document.getElementById('inv-id').value = invoice.id;
   document.getElementById('inv-nama-utang').value = invoice.nama_utang || '';
-  document.getElementById('inv-supplier').value = invoice.supplier_id;
+  populateInvoiceProductOptions(invoice.product_id || '', invoice.product_id ? '' : invoice.nama_utang || '');
+  syncTomSelectVal('inv-supplier', invoice.supplier_id);
   document.getElementById('inv-nomor').value = invoice.nomor_faktur;
   document.getElementById('inv-tanggal').value = invoice.tanggal_faktur;
   document.getElementById('inv-jatuh-tempo').value = invoice.tanggal_jatuh_tempo;
-  document.getElementById('inv-total').value = invoice.total_amount;
+  document.getElementById('inv-total').value = invoice.total_amount || '';
   document.getElementById('inv-syarat').value = invoice.syarat_pembayaran || '';
   document.getElementById('inv-keterangan').value = invoice.keterangan || '';
 
@@ -296,10 +785,62 @@ async function loadInvoicesData() {
     .order('id', { ascending: false });
 
   if (error) return toast('Gagal load faktur: ' + error.message, 'error');
-  loadedInvoices = data;
+  loadedInvoices = data || [];
 
+  currentInvoicePage = 1;
+  renderInvoiceTable();
+
+  unpaidInvoices = (data || []).filter(inv => getInvoiceBalance(inv, inv.payments) > 0.009);
+  const payInvEl = document.getElementById('pay-invoice');
+  if (payInvEl) {
+    if (payInvEl.tomselect) payInvEl.tomselect.destroy();
+    payInvEl.innerHTML = '<option value="">-- Pilih nama utang usaha --</option>' + unpaidInvoices.map(inv => {
+      const label = `${inv.nama_utang || 'Utang usaha'} | ${inv.suppliers?.nama || '-'} | ${inv.nomor_faktur} | Sisa ${formatRp(getInvoiceBalance(inv, inv.payments))}`;
+      return `<option value="${inv.id}">${label}</option>`;
+    }).join('');
+    initTomSelect('pay-invoice');
+  }
+}
+
+function onInvoiceSearch() {
+  currentInvoicePage = 1;
+  renderInvoiceTable();
+}
+window.onInvoiceSearch = onInvoiceSearch;
+
+function getFilteredInvoices() {
+  const query = (document.getElementById('search-invoice')?.value || '').toLowerCase().trim();
+  if (!query) return loadedInvoices;
+  return loadedInvoices.filter(inv => {
+    const sisa = getInvoiceBalance(inv, inv.payments);
+    const totalTerpakai = getInvoiceTotalApplied(inv.payments);
+    const st = statusDinamis(inv, totalTerpakai, sisa);
+    return (inv.nama_utang || '').toLowerCase().includes(query) ||
+           (inv.suppliers?.nama || '').toLowerCase().includes(query) ||
+           (inv.nomor_faktur || '').toLowerCase().includes(query) ||
+           (inv.syarat_pembayaran || '').toLowerCase().includes(query) ||
+           (inv.tanggal_faktur || '').includes(query) ||
+           (inv.tanggal_jatuh_tempo || '').includes(query) ||
+           st.label.toLowerCase().includes(query);
+  });
+}
+
+function renderInvoiceTable() {
   const tbody = document.querySelector('#tabel-invoice tbody');
-  tbody.innerHTML = data.map(inv => {
+  if (!tbody) return;
+
+  const filtered = getFilteredInvoices();
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center">Belum ada faktur yang cocok</td></tr>';
+    renderPaginationBar('invoice-pagination', 1, 0, INVOICE_PER_PAGE, 'changeInvoicePage');
+    return;
+  }
+
+  const start = (currentInvoicePage - 1) * INVOICE_PER_PAGE;
+  const pageItems = filtered.slice(start, start + INVOICE_PER_PAGE);
+
+  tbody.innerHTML = pageItems.map(inv => {
     const totalTerpakai = getInvoiceTotalApplied(inv.payments);
     const sisa = getInvoiceBalance(inv, inv.payments);
     const st = statusDinamis(inv, totalTerpakai, sisa);
@@ -315,25 +856,40 @@ async function loadInvoicesData() {
         <td>${formatSyarat(inv.syarat_pembayaran)}</td>
         <td>${formatRp(sisa)}</td>
         <td><span class="badge ${st.cls}">${st.label}</span></td>
+        <td>${inv.keterangan || '-'}</td>
         <td><button class="btn-sm" onclick="editInvoice(${inv.id})">Edit</button> <button class="btn-danger btn-sm" onclick="hapusInvoice(${inv.id})">Hapus</button></td>
       </tr>`;
-  }).join('') || '<tr><td colspan="10" style="text-align:center">Belum ada faktur</td></tr>';
-
-  unpaidInvoices = data.filter(inv => getInvoiceBalance(inv, inv.payments) > 0.009);
-  document.getElementById('pay-invoice').innerHTML = '<option value="">-- Pilih nama utang usaha --</option>' + unpaidInvoices.map(inv => {
-    const label = `${inv.nama_utang || 'Utang usaha'} | ${inv.suppliers?.nama || '-'} | ${inv.nomor_faktur} | Sisa ${formatRp(getInvoiceBalance(inv, inv.payments))}`;
-    return `<option value="${inv.id}">${label}</option>`;
   }).join('');
+
+  renderPaginationBar('invoice-pagination', currentInvoicePage, filtered.length, INVOICE_PER_PAGE, 'changeInvoicePage');
 }
 
+function changeInvoicePage(delta) {
+  const filtered = getFilteredInvoices();
+  const totalPages = Math.ceil(filtered.length / INVOICE_PER_PAGE);
+  const target = currentInvoicePage + delta;
+  if (target >= 1 && target <= totalPages) {
+    currentInvoicePage = target;
+    renderInvoiceTable();
+  }
+}
+window.changeInvoicePage = changeInvoicePage;
+
 async function hapusInvoice(id) {
+  const invToDelete = loadedInvoices.find(item => String(item.id) === String(id));
   if (!confirm('Hapus faktur ini?')) return;
   if (!ensureSupabaseReady()) return;
 
   const { error } = await db.from('invoices').delete().eq('id', id);
   if (error) return toast('Gagal: ' + error.message, 'error');
   toast('Faktur dihapus', 'success');
+
+  if (invToDelete) {
+    await logActivity('Hapus Faktur', `Menghapus Faktur #${invToDelete.nomor_faktur} (${invToDelete.nama_utang || ''})`);
+  }
+
   loadInvoices();
+  loadDashboard();
 }
 
 // ====== PAYMENT ======
@@ -392,8 +948,8 @@ async function openPaymentForInvoice(invoiceId) {
 
   document.getElementById('form-payment').reset();
   resetPaymentEdit();
+  syncTomSelectVal('pay-invoice', String(invoice.id), false);
   const invoiceSelect = document.getElementById('pay-invoice');
-  invoiceSelect.value = String(invoice.id);
   invoiceSelect.dispatchEvent(new Event('change', { bubbles: true }));
   activateTab('payment');
 }
@@ -465,12 +1021,17 @@ document.getElementById('form-payment').addEventListener('submit', async (e) => 
 
   if (error) return toast('Gagal simpan pembayaran: ' + error.message, 'error');
 
+  const desc = paymentId
+    ? `Memperbarui pembayaran ${formatRp(bayar)} untuk Faktur #${inv.nomor_faktur} (${inv.nama_utang || ''})`
+    : `Mencatat pembayaran ${formatRp(bayar)} via ${metode} untuk Faktur #${inv.nomor_faktur} (${inv.nama_utang || ''})`;
+  await logActivity(paymentId ? 'Edit Pembayaran' : 'Tambah Pembayaran', desc);
+
   const sisaSesudah = Math.max(0, totalTagihan - bayar - (disk.berhak ? disk.diskonRp : 0));
   toast(paymentId ? 'Pembayaran berhasil diperbarui ✓' : sisaSesudah <= 0.01 && disk.diskonRp > 0
     ? `Pembayaran tersimpan. Faktur lunas dengan diskon ${formatRp(disk.diskonRp)} ✓`
     : 'Pembayaran tersimpan ✓', 'success');
   e.target.reset();
-  document.getElementById('pay-invoice').value = '';
+  syncTomSelectVal('pay-invoice', '');
   resetPaymentEdit();
   selectedPaymentInvoice = null;
   renderPaymentInfo();
@@ -490,8 +1051,47 @@ async function loadPaymentHistory() {
 
   if (error) return toast('Gagal load riwayat pembayaran: ' + error.message, 'error');
 
+  loadedPaymentHistory = data || [];
+  currentPaymentPage = 1;
+  renderPaymentTable();
+}
+
+function onPaymentSearch() {
+  currentPaymentPage = 1;
+  renderPaymentTable();
+}
+window.onPaymentSearch = onPaymentSearch;
+
+function getFilteredPayments() {
+  const query = (document.getElementById('search-payment')?.value || '').toLowerCase().trim();
+  if (!query) return loadedPaymentHistory;
+  return loadedPaymentHistory.filter(p => {
+    const inv = p.invoices || {};
+    return (inv.nama_utang || '').toLowerCase().includes(query) ||
+           (inv.nomor_faktur || '').toLowerCase().includes(query) ||
+           (inv.suppliers?.nama || '').toLowerCase().includes(query) ||
+           (p.metode || '').toLowerCase().includes(query) ||
+           (p.keterangan || '').toLowerCase().includes(query) ||
+           (p.tanggal_bayar || '').includes(query);
+  });
+}
+
+function renderPaymentTable() {
   const tbody = document.querySelector('#tabel-payment tbody');
-  tbody.innerHTML = data.map(p => {
+  if (!tbody) return;
+
+  const filtered = getFilteredPayments();
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center">Belum ada pembayaran yang cocok</td></tr>';
+    renderPaginationBar('payment-pagination', 1, 0, PAYMENT_PER_PAGE, 'changePaymentPage');
+    return;
+  }
+
+  const start = (currentPaymentPage - 1) * PAYMENT_PER_PAGE;
+  const pageItems = filtered.slice(start, start + PAYMENT_PER_PAGE);
+
+  tbody.innerHTML = pageItems.map(p => {
     const inv = p.invoices || {};
     const supplier = inv.suppliers?.nama || '-';
     const nomor = inv.nomor_faktur || '-';
@@ -510,16 +1110,42 @@ async function loadPaymentHistory() {
         <td>${p.keterangan || '-'}</td>
         <td><button class="btn-sm" onclick="editPayment(${p.id})">Edit</button> <button class="btn-danger btn-sm" onclick="hapusPembayaran(${p.id})">Hapus</button></td>
       </tr>`;
-  }).join('') || '<tr><td colspan="10" style="text-align:center">Belum ada pembayaran</td></tr>';
+  }).join('');
+
+  renderPaginationBar('payment-pagination', currentPaymentPage, filtered.length, PAYMENT_PER_PAGE, 'changePaymentPage');
 }
+
+function changePaymentPage(delta) {
+  const filtered = getFilteredPayments();
+  const totalPages = Math.ceil(filtered.length / PAYMENT_PER_PAGE);
+  const target = currentPaymentPage + delta;
+  if (target >= 1 && target <= totalPages) {
+    currentPaymentPage = target;
+    renderPaymentTable();
+  }
+}
+window.changePaymentPage = changePaymentPage;
 
 async function hapusPembayaran(id) {
   if (!confirm('Hapus transaksi pembayaran ini? Saldo utang usaha akan dihitung ulang.')) return;
   if (!ensureSupabaseReady()) return;
 
+  const { data: payToDelete } = await db
+    .from('payments')
+    .select('*, invoices(nomor_faktur, nama_utang)')
+    .eq('id', id)
+    .single();
+
   const { error } = await db.from('payments').delete().eq('id', id);
   if (error) return toast('Gagal hapus pembayaran: ' + error.message, 'error');
   toast('Pembayaran dihapus', 'success');
+
+  if (payToDelete) {
+    const noInv = payToDelete.invoices?.nomor_faktur || '';
+    const namaUtang = payToDelete.invoices?.nama_utang || '';
+    await logActivity('Hapus Pembayaran', `Menghapus pembayaran ${formatRp(payToDelete.jumlah_bayar)} untuk Faktur #${noInv} (${namaUtang})`);
+  }
+
   loadInvoices();
   loadPaymentHistory();
   loadDashboard();
@@ -545,14 +1171,16 @@ async function editPayment(id) {
 
   const invoiceSelect = document.getElementById('pay-invoice');
   if (!Array.from(invoiceSelect.options).some(option => option.value === String(invoice.id))) {
+    if (invoiceSelect.tomselect) invoiceSelect.tomselect.destroy();
     const option = document.createElement('option');
     option.value = invoice.id;
     option.textContent = `${invoice.nama_utang || 'Utang usaha'} | ${invoice.suppliers?.nama || '-'} | ${invoice.nomor_faktur}`;
     invoiceSelect.append(option);
+    initTomSelect('pay-invoice');
   }
 
   document.getElementById('pay-id').value = payment.id;
-  invoiceSelect.value = invoice.id;
+  syncTomSelectVal('pay-invoice', String(invoice.id));
   document.getElementById('pay-tanggal').value = payment.tanggal_bayar;
   document.getElementById('pay-jumlah').value = payment.jumlah_bayar;
   document.getElementById('pay-total-denda').value = payment.denda_dikenakan || '';
@@ -576,13 +1204,41 @@ function resetPaymentEdit() {
 
 document.getElementById('btn-cancel-payment').addEventListener('click', () => {
   document.getElementById('form-payment').reset();
-  document.getElementById('pay-invoice').value = '';
+  syncTomSelectVal('pay-invoice', '');
   selectedPaymentInvoice = null;
   resetPaymentEdit();
   renderPaymentInfo();
 });
 
 // ====== DASHBOARD ======
+// ====== DASHBOARD: NOTIFIKASI & RIWAYAT AKTIVITAS ======
+let cachedNotifications = [];
+let currentNotifPage = 1;
+const NOTIF_PER_PAGE = 5;
+
+let cachedActivities = [];
+let currentActivityPage = 1;
+const ACTIVITY_PER_PAGE = 5;
+
+async function logActivity(type, description) {
+  const item = { id: Date.now(), type, description, created_at: new Date().toISOString() };
+  if (db) {
+    try {
+      const { error } = await db.from('activity_logs').insert({ type, description });
+      if (!error) {
+        loadActivityLogs();
+        return;
+      }
+    } catch (err) {}
+  }
+  try {
+    const list = JSON.parse(localStorage.getItem('local_activity_logs') || '[]');
+    list.unshift(item);
+    localStorage.setItem('local_activity_logs', JSON.stringify(list));
+  } catch (err) {}
+  loadActivityLogs();
+}
+
 async function loadDashboard() {
   if (!ensureSupabaseReady()) return;
 
@@ -655,9 +1311,28 @@ async function loadDashboard() {
   });
 
   notifications.sort((first, second) => first.sortOrder - second.sortOrder);
+  cachedNotifications = notifications;
   document.getElementById('notification-count').textContent = notifications.length;
+  currentNotifPage = 1;
+  renderDashboardNotificationsPage();
+
+  loadActivityLogs();
+}
+
+function renderDashboardNotificationsPage() {
   const feed = document.getElementById('dashboard-notifications');
-  feed.innerHTML = notifications.map(notification => `
+  if (!feed) return;
+
+  if (cachedNotifications.length === 0) {
+    feed.innerHTML = '<div class="notification-empty"><strong>Tidak ada yang mendesak</strong><br>Utang usaha belum lunas yang mendekati jatuh tempo atau batas diskon akan muncul di sini.</div>';
+    document.getElementById('notif-pagination').innerHTML = '';
+    return;
+  }
+
+  const start = (currentNotifPage - 1) * NOTIF_PER_PAGE;
+  const pageItems = cachedNotifications.slice(start, start + NOTIF_PER_PAGE);
+
+  feed.innerHTML = pageItems.map(notification => `
     <article class="notification-item ${notification.kind}">
       <span aria-hidden="true"></span>
       <div class="notification-copy">
@@ -671,7 +1346,181 @@ async function loadDashboard() {
       </div>
       <div class="notification-balance"><span>Sisa utang usaha</span><strong>${formatRp(notification.balance)}</strong></div>
       <button class="notification-action" type="button" onclick="openPaymentForInvoice(${Number(notification.invoice.id)})">Catat pembayaran</button>
-    </article>`).join('') || '<div class="notification-empty"><strong>Tidak ada yang mendesak</strong><br>Utang usaha belum lunas yang mendekati jatuh tempo atau batas diskon akan muncul di sini.</div>';
+    </article>`).join('');
+
+  const totalPages = Math.ceil(cachedNotifications.length / NOTIF_PER_PAGE);
+  const pContainer = document.getElementById('notif-pagination');
+  if (totalPages <= 1) {
+    pContainer.innerHTML = '';
+  } else {
+    pContainer.innerHTML = `
+      <div class="pagination-wrap">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="changeNotifPage(-1)" ${currentNotifPage <= 1 ? 'disabled' : ''}>&larr; Sebelumnya</button>
+        <span class="pagination-info">Halaman <strong>${currentNotifPage}</strong> dari <strong>${totalPages}</strong> (Total: ${cachedNotifications.length})</span>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="changeNotifPage(1)" ${currentNotifPage >= totalPages ? 'disabled' : ''}>Selanjutnya &rarr;</button>
+      </div>`;
+  }
+}
+
+function changeNotifPage(delta) {
+  const totalPages = Math.ceil(cachedNotifications.length / NOTIF_PER_PAGE);
+  const target = currentNotifPage + delta;
+  if (target >= 1 && target <= totalPages) {
+    currentNotifPage = target;
+    renderDashboardNotificationsPage();
+  }
+}
+window.changeNotifPage = changeNotifPage;
+
+function resetActivityLogs() {
+  cachedActivities = [];
+  try {
+    localStorage.removeItem('local_activity_logs');
+  } catch (e) {}
+  const countEl = document.getElementById('activity-count');
+  if (countEl) countEl.textContent = 0;
+  currentActivityPage = 1;
+  renderDashboardActivitiesPage();
+}
+window.resetActivityLogs = resetActivityLogs;
+
+async function loadActivityLogs() {
+  let logs = [];
+  if (db) {
+    try {
+      const { data, error } = await db
+        .from('activity_logs')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && data && data.length > 0) {
+        logs = data;
+      }
+    } catch (err) {}
+  }
+
+  if (logs.length === 0) {
+    try {
+      logs = JSON.parse(localStorage.getItem('local_activity_logs') || '[]');
+    } catch (err) {
+      logs = [];
+    }
+  }
+
+  // Jika riwayat aktivitas masih kosong, otomatis tarik faktur & pembayaran yang ada di database
+  if (logs.length === 0 && db) {
+    let sourceInvoices = loadedInvoices;
+    if (!sourceInvoices || sourceInvoices.length === 0) {
+      try {
+        const res = await db.from('invoices').select('*, suppliers(nama), payments(*)').order('id', { ascending: false });
+        if (!res.error && res.data) {
+          sourceInvoices = res.data;
+        }
+      } catch (err) {}
+    }
+
+    if (sourceInvoices && sourceInvoices.length > 0) {
+      const derivedLogs = [];
+      sourceInvoices.forEach(inv => {
+        const supName = inv.suppliers?.nama || 'Supplier';
+        derivedLogs.push({
+          id: 'inv-' + inv.id,
+          type: 'Tambah Faktur',
+          description: `Menambahkan Faktur #${inv.nomor_faktur} (${inv.nama_utang || 'Utang'}) dari ${supName} - Total: ${formatRp(inv.total_amount)}`,
+          created_at: inv.created_at || inv.tanggal_faktur || new Date().toISOString()
+        });
+        (inv.payments || []).forEach(p => {
+          derivedLogs.push({
+            id: 'pay-' + p.id,
+            type: 'Tambah Pembayaran',
+            description: `Mencatat pembayaran ${formatRp(p.jumlah_bayar)} via ${p.metode || 'transfer'} untuk Faktur #${inv.nomor_faktur} (${inv.nama_utang || ''})`,
+            created_at: p.created_at || p.tanggal_bayar || new Date().toISOString()
+          });
+        });
+      });
+
+      derivedLogs.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+      logs = derivedLogs;
+      try {
+        localStorage.setItem('local_activity_logs', JSON.stringify(logs));
+      } catch (e) {}
+    }
+  }
+
+  cachedActivities = logs;
+  const countEl = document.getElementById('activity-count');
+  if (countEl) countEl.textContent = cachedActivities.length;
+  currentActivityPage = 1;
+  renderDashboardActivitiesPage();
+}
+
+function renderDashboardActivitiesPage() {
+  const feed = document.getElementById('dashboard-activities');
+  if (!feed) return;
+
+  if (cachedActivities.length === 0) {
+    feed.innerHTML = '<div class="notification-empty">Belum ada riwayat aktivitas penambahan, edit, atau hapus transaksi.</div>';
+    document.getElementById('activity-pagination').innerHTML = '';
+    return;
+  }
+
+  const start = (currentActivityPage - 1) * ACTIVITY_PER_PAGE;
+  const pageItems = cachedActivities.slice(start, start + ACTIVITY_PER_PAGE);
+
+  feed.innerHTML = pageItems.map(act => {
+    let cls = 'edit';
+    const typeLower = (act.type || '').toLowerCase();
+    if (typeLower.includes('tambah')) cls = 'tambah';
+    else if (typeLower.includes('hapus')) cls = 'hapus';
+
+    return `
+      <div class="activity-item ${cls}">
+        <div class="activity-main">
+          <div class="activity-topline">
+            <span class="activity-badge">${act.type || 'Aktivitas'}</span>
+          </div>
+          <div class="activity-desc">${act.description}</div>
+        </div>
+        <div class="activity-time">${formatWaktu(act.created_at)}</div>
+      </div>`;
+  }).join('');
+
+  const totalPages = Math.ceil(cachedActivities.length / ACTIVITY_PER_PAGE);
+  const pContainer = document.getElementById('activity-pagination');
+  if (totalPages <= 1) {
+    pContainer.innerHTML = '';
+  } else {
+    pContainer.innerHTML = `
+      <div class="pagination-wrap">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="changeActivityPage(-1)" ${currentActivityPage <= 1 ? 'disabled' : ''}>&larr; Sebelumnya</button>
+        <span class="pagination-info">Halaman <strong>${currentActivityPage}</strong> dari <strong>${totalPages}</strong> (Total: ${cachedActivities.length})</span>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="changeActivityPage(1)" ${currentActivityPage >= totalPages ? 'disabled' : ''}>Selanjutnya &rarr;</button>
+      </div>`;
+  }
+}
+
+function changeActivityPage(delta) {
+  const totalPages = Math.ceil(cachedActivities.length / ACTIVITY_PER_PAGE);
+  const target = currentActivityPage + delta;
+  if (target >= 1 && target <= totalPages) {
+    currentActivityPage = target;
+    renderDashboardActivitiesPage();
+  }
+}
+window.changeActivityPage = changeActivityPage;
+
+
+
+function formatWaktu(isoStr) {
+  if (!isoStr) return '-';
+  try {
+    const d = new Date(isoStr);
+    const dateStr = d.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const timeStr = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    return `${dateStr} ${timeStr}`;
+  } catch (e) {
+    return isoStr;
+  }
 }
 
 function hitungHariAntartanggal(tanggalAwal, tanggalAkhir) {
@@ -713,7 +1562,7 @@ function getReportDayMetrics(invoice, payments, balance) {
   };
 }
 
-// ====== LAPORAN DENGAN FILTER PERIODE TANGGAL ======
+// ====== LAPORAN DENGAN FILTER & PENGELOMPOKAN ======
 function setLaporanPeriod(periodType) {
   const startInput = document.getElementById('filter-start-date');
   const endInput = document.getElementById('filter-end-date');
@@ -743,23 +1592,30 @@ function setLaporanPeriod(periodType) {
 }
 
 function resetLaporanFilter() {
-  document.getElementById('filter-status').value = 'all';
-  document.getElementById('filter-date-type').value = 'tanggal_faktur';
-  document.getElementById('filter-start-date').value = '';
-  document.getElementById('filter-end-date').value = '';
+  if (document.getElementById('filter-status')) document.getElementById('filter-status').value = 'all';
+  syncTomSelectVal('filter-supplier', 'all');
+  syncTomSelectVal('filter-category', 'all');
+  if (document.getElementById('filter-date-type')) document.getElementById('filter-date-type').value = 'tanggal_faktur';
+  if (document.getElementById('filter-start-date')) document.getElementById('filter-start-date').value = '';
+  if (document.getElementById('filter-end-date')) document.getElementById('filter-end-date').value = '';
   loadLaporan();
 }
 
 window.setLaporanPeriod = setLaporanPeriod;
 window.resetLaporanFilter = resetLaporanFilter;
 
+function onLaporanSearch() {
+  currentLaporanPage = 1;
+  loadLaporan();
+}
+window.onLaporanSearch = onLaporanSearch;
+
 async function loadLaporan() {
   if (!ensureSupabaseReady()) return;
 
-  // Menggunakan payments(*) agar aman dan tidak error meskipun skema kolom bertambah
   const { data, error } = await db
     .from('invoices')
-    .select('*, suppliers(nama), payments(*)')
+    .select('*, suppliers(id, nama), products(id, nama, kategori), payments(*)')
     .order('tanggal_jatuh_tempo', { ascending: true });
 
   if (error) {
@@ -767,62 +1623,101 @@ async function loadLaporan() {
     return toast('Gagal load laporan: ' + error.message, 'error');
   }
 
-  const filterStatus = document.getElementById('filter-status').value;
+  const filterStatus   = document.getElementById('filter-status')?.value   || 'all';
+  const filterSupplier = document.getElementById('filter-supplier')?.value || 'all';
+  const filterCategory = document.getElementById('filter-category')?.value || 'all';
   const filterDateType = document.getElementById('filter-date-type')?.value || 'tanggal_faktur';
-  const startDate = document.getElementById('filter-start-date')?.value || '';
-  const endDate = document.getElementById('filter-end-date')?.value || '';
+  const startDate      = document.getElementById('filter-start-date')?.value || '';
+  const endDate        = document.getElementById('filter-end-date')?.value   || '';
+  const searchKeyword  = (document.getElementById('search-laporan')?.value || '').toLowerCase().trim();
 
   const rows = (data || []).filter(inv => {
-    const totalTerpakai = getInvoiceTotalApplied(inv.payments);
     const sisa = getInvoiceBalance(inv, inv.payments);
 
     // 1. Filter Status
     if (filterStatus === 'belum_lunas' && sisa <= 0.009) return false;
-    if (filterStatus === 'lunas' && sisa > 0.009) return false;
+    if (filterStatus === 'lunas'       && sisa >  0.009) return false;
     if (filterStatus === 'jatuh_tempo' && (sisa <= 0.009 || diffDays(inv.tanggal_jatuh_tempo) >= 0)) return false;
 
-    // 2. Filter Periode Tanggal
+    // 2. Filter Supplier
+    if (filterSupplier !== 'all') {
+      const invSupId = inv.supplier_id || inv.suppliers?.id;
+      if (String(invSupId) !== String(filterSupplier)) return false;
+    }
+
+    // 3. Filter Kategori Barang
+    if (filterCategory !== 'all') {
+      const prodKategori = inv.products?.kategori || '-';
+      if (prodKategori !== filterCategory) return false;
+    }
+
+    // 4. Filter Tanggal
     const targetDate = inv[filterDateType];
     if (targetDate) {
       if (startDate && targetDate < startDate) return false;
-      if (endDate && targetDate > endDate) return false;
+      if (endDate   && targetDate > endDate)   return false;
+    }
+
+    // 5. Filter Kata Kunci Pencarian
+    if (searchKeyword) {
+      const totalTerpakai = getInvoiceTotalApplied(inv.payments);
+      const st = statusDinamis(inv, totalTerpakai, sisa);
+      const matches = (inv.nama_utang || '').toLowerCase().includes(searchKeyword) ||
+                      (inv.nomor_faktur || '').toLowerCase().includes(searchKeyword) ||
+                      (inv.suppliers?.nama || '').toLowerCase().includes(searchKeyword) ||
+                      (inv.syarat_pembayaran || '').toLowerCase().includes(searchKeyword) ||
+                      (inv.tanggal_faktur || '').includes(searchKeyword) ||
+                      (inv.tanggal_jatuh_tempo || '').includes(searchKeyword) ||
+                      st.label.toLowerCase().includes(searchKeyword);
+      if (!matches) return false;
     }
 
     return true;
   });
 
-  // Hitung Summary Metrics
-  let sumAmount = 0;
-  let sumPaid = 0;
-  let sumBalance = 0;
+  cachedFilteredLaporanRows = rows;
 
+  // Summary cards
+  let sumAmount = 0, sumPaid = 0, sumBalance = 0;
   rows.forEach(inv => {
-    sumAmount += Number(inv.total_amount || 0);
-    sumPaid += getInvoiceTotalPaid(inv.payments);
+    sumAmount  += Number(inv.total_amount || 0);
+    sumPaid    += getInvoiceTotalPaid(inv.payments);
     sumBalance += getInvoiceBalance(inv, inv.payments);
   });
 
-  const countEl = document.getElementById('rep-total-count');
-  const amountEl = document.getElementById('rep-total-amount');
-  const paidEl = document.getElementById('rep-total-paid');
+  const countEl   = document.getElementById('rep-total-count');
+  const amountEl  = document.getElementById('rep-total-amount');
+  const paidEl    = document.getElementById('rep-total-paid');
   const balanceEl = document.getElementById('rep-total-balance');
-
-  if (countEl) countEl.textContent = rows.length;
-  if (amountEl) amountEl.textContent = formatRp(sumAmount);
-  if (paidEl) paidEl.textContent = formatRp(sumPaid);
+  if (countEl)   countEl.textContent   = rows.length;
+  if (amountEl)  amountEl.textContent  = formatRp(sumAmount);
+  if (paidEl)    paidEl.textContent    = formatRp(sumPaid);
   if (balanceEl) balanceEl.textContent = formatRp(sumBalance);
 
-  // Render Tabel
+  currentLaporanPage = 1;
+  renderLaporanTable();
+}
+
+function renderLaporanTable() {
   const tbody = document.querySelector('#tabel-laporan tbody');
   if (!tbody) return;
 
-  tbody.innerHTML = rows.map(inv => {
-    const totalDibayar = getInvoiceTotalPaid(inv.payments);
+  if (cachedFilteredLaporanRows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:24px;color:#64748b;">Tidak ada data laporan untuk filter/pencarian yang dipilih.</td></tr>';
+    renderPaginationBar('laporan-pagination', 1, 0, LAPORAN_PER_PAGE, 'changeLaporanPage');
+    return;
+  }
+
+  const start = (currentLaporanPage - 1) * LAPORAN_PER_PAGE;
+  const pageItems = cachedFilteredLaporanRows.slice(start, start + LAPORAN_PER_PAGE);
+
+  tbody.innerHTML = pageItems.map(inv => {
+    const totalDibayar  = getInvoiceTotalPaid(inv.payments);
     const totalTerpakai = getInvoiceTotalApplied(inv.payments);
-    const totalDiskon = getInvoiceTotalDiscount(inv.payments);
-    const totalDenda = getInvoiceTotalLateFee(inv.payments);
+    const totalDiskon   = getInvoiceTotalDiscount(inv.payments);
+    const totalDenda    = getInvoiceTotalLateFee(inv.payments);
     const sisa = getInvoiceBalance(inv, inv.payments);
-    const st = statusDinamis(inv, totalTerpakai, sisa);
+    const st   = statusDinamis(inv, totalTerpakai, sisa);
     const { sisaHari, hariLewatTempo } = getReportDayMetrics(inv, inv.payments, sisa);
 
     return `
@@ -840,16 +1735,31 @@ async function loadLaporan() {
         <td>${formatSyarat(inv.syarat_pembayaran)}</td>
         <td><span class="badge ${st.cls}">${st.label}</span></td>
         <td>${sisaHari}</td>
-        <td style="${hariLewatTempo > 0 ? 'color:red; font-weight:bold;' : ''}">${hariLewatTempo}</td>
+        <td style="${hariLewatTempo > 0 ? 'color:red;font-weight:bold;' : ''}">${hariLewatTempo}</td>
       </tr>`;
-  }).join('') || '<tr><td colspan="14" style="text-align:center; padding: 24px; color: #64748b;">Tidak ada data laporan untuk filter dan periode yang dipilih.</td></tr>';
+  }).join('');
+
+  renderPaginationBar('laporan-pagination', currentLaporanPage, cachedFilteredLaporanRows.length, LAPORAN_PER_PAGE, 'changeLaporanPage');
 }
+
+function changeLaporanPage(delta) {
+  const totalPages = Math.ceil(cachedFilteredLaporanRows.length / LAPORAN_PER_PAGE);
+  const target = currentLaporanPage + delta;
+  if (target >= 1 && target <= totalPages) {
+    currentLaporanPage = target;
+    renderLaporanTable();
+  }
+}
+window.changeLaporanPage = changeLaporanPage;
 
 function bindLaporanEvents() {
   document.getElementById('filter-status')?.addEventListener('change', loadLaporan);
+  document.getElementById('filter-supplier')?.addEventListener('change', loadLaporan);
+  document.getElementById('filter-category')?.addEventListener('change', loadLaporan);
   document.getElementById('filter-date-type')?.addEventListener('change', loadLaporan);
   document.getElementById('filter-start-date')?.addEventListener('change', loadLaporan);
   document.getElementById('filter-end-date')?.addEventListener('change', loadLaporan);
+  document.getElementById('search-laporan')?.addEventListener('input', loadLaporan);
 }
 
 // ====== EXPORT EXCEL DENGAN TABEL RAPI & STYLING ======
@@ -858,11 +1768,13 @@ document.getElementById('btn-export')?.addEventListener('click', async () => {
 
   const { data, error } = await db
     .from('invoices')
-    .select('*, suppliers(nama), payments(*)');
+    .select('*, suppliers(id, nama, kontak), products(id, nama, kategori), payments(*)');
 
   if (error) return toast('Gagal export data: ' + error.message, 'error');
 
-  const filterStatus = document.getElementById('filter-status').value;
+  const filterStatus = document.getElementById('filter-status')?.value || 'all';
+  const filterSupplier = document.getElementById('filter-supplier')?.value || 'all';
+  const filterCategory = document.getElementById('filter-category')?.value || 'all';
   const filterDateType = document.getElementById('filter-date-type')?.value || 'tanggal_faktur';
   const startDate = document.getElementById('filter-start-date')?.value || '';
   const endDate = document.getElementById('filter-end-date')?.value || '';
@@ -889,6 +1801,16 @@ document.getElementById('btn-export')?.addEventListener('click', async () => {
     if (filterStatus === 'lunas' && sisa > 0.009) return false;
     if (filterStatus === 'jatuh_tempo' && (sisa <= 0.009 || diffDays(inv.tanggal_jatuh_tempo) >= 0)) return false;
 
+    if (filterSupplier !== 'all') {
+      const invSupId = inv.supplier_id || inv.suppliers?.id;
+      if (String(invSupId) !== String(filterSupplier)) return false;
+    }
+
+    if (filterCategory !== 'all') {
+      const prodKategori = inv.products?.kategori || '-';
+      if (prodKategori !== filterCategory) return false;
+    }
+
     const targetDate = inv[filterDateType];
     if (targetDate) {
       if (startDate && targetDate < startDate) return false;
@@ -900,6 +1822,11 @@ document.getElementById('btn-export')?.addEventListener('click', async () => {
   if (rows.length === 0) {
     return toast('Tidak ada data untuk diekspor pada filter ini.', 'error');
   }
+
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'Toko Elektronik Maju';
+  workbook.calcProperties.fullCalcOnLoad = true;
+  const moneyFormat = '#,##0.00;[Red](#,##0.00)';
 
   let grandTotal = 0;
   let grandDibayar = 0;
@@ -918,14 +1845,11 @@ document.getElementById('btn-export')?.addEventListener('click', async () => {
     grandDenda += totalDenda;
     grandSisa += sisa;
   });
+
   const reportTitle = 'LAPORAN HISTORIS UTANG USAHA - TOKO ELEKTRONIK MAJU';
   const reportDetails = `Periode: ${periodLabel} | Status: ${filterLabel} | Tanggal Ekspor: ${formatTanggal(todayStr())} | Total Baris: ${rows.length} Faktur`;
-  const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'Toko Elektronik Maju';
-  workbook.calcProperties.fullCalcOnLoad = true;
   const worksheet = workbook.addWorksheet('Laporan Utang Usaha', { views: [{ state: 'frozen', ySplit: 4 }] });
-  const headers = ['No', 'Nama Utang Usaha', 'No Faktur', 'Supplier', 'Tgl Faktur', 'Jatuh Tempo', 'Total (Rp)', 'Dibayar (Rp)', 'Diskon (Rp)', 'Denda (Rp)', 'Sisa (Rp)', 'Syarat', 'Status', 'Hari Sisa', 'Lewat Tempo'];
-  const moneyFormat = '#,##0.00;[Red](#,##0.00)';
+  const headers = ['No', 'Nama Barang', 'No Faktur', 'Supplier', 'Tgl Faktur', 'Jatuh Tempo', 'Total (Rp)', 'Dibayar (Rp)', 'Diskon (Rp)', 'Denda (Rp)', 'Sisa (Rp)', 'Syarat', 'Status', 'Hari Sisa', 'Lewat Tempo'];
   worksheet.columns = [8, 28, 17, 22, 15, 16, 18, 18, 16, 16, 18, 16, 18, 13, 15].map(width => ({ width }));
 
   worksheet.mergeCells(1, 1, 1, headers.length);
@@ -1053,22 +1977,89 @@ document.getElementById('btn-export-pdf')?.addEventListener('click', () => {
     return toast('Fitur PDF belum termuat. Periksa koneksi internet lalu muat ulang.', 'error');
   }
 
+  if (!cachedFilteredLaporanRows || cachedFilteredLaporanRows.length === 0) {
+    return toast('Tidak ada data laporan untuk diekspor ke PDF.', 'error');
+  }
+
+  const title = 'Laporan Detail Utang Usaha — Toko Elektronik Maju';
   const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-  pdf.setFontSize(16);
-  pdf.text('Laporan Utang Usaha — Toko Elektronik Maju', 12, 14);
+  pdf.setFontSize(15);
+  pdf.text(title, 12, 14);
   pdf.setFontSize(9);
   pdf.text(`Tanggal cetak: ${formatTanggal(todayStr())}`, 12, 20);
+
+  const head = [['Nama Utang', 'No Faktur', 'Supplier', 'Tgl Faktur', 'Jatuh Tempo', 'Total', 'Dibayar', 'Diskon', 'Denda', 'Sisa', 'Syarat', 'Status', 'Sisa Hari', 'Lewat Tempo']];
+
+  const body = cachedFilteredLaporanRows.map(inv => {
+    const totalDibayar  = getInvoiceTotalPaid(inv.payments);
+    const totalTerpakai = getInvoiceTotalApplied(inv.payments);
+    const totalDiskon   = getInvoiceTotalDiscount(inv.payments);
+    const totalDenda    = getInvoiceTotalLateFee(inv.payments);
+    const sisa = getInvoiceBalance(inv, inv.payments);
+    const st   = statusDinamis(inv, totalTerpakai, sisa);
+    const { sisaHari, hariLewatTempo } = getReportDayMetrics(inv, inv.payments, sisa);
+
+    return [
+      inv.nama_utang || '-',
+      inv.nomor_faktur || '-',
+      inv.suppliers?.nama || '-',
+      formatTanggal(inv.tanggal_faktur),
+      formatTanggal(inv.tanggal_jatuh_tempo),
+      formatRp(inv.total_amount),
+      formatRp(totalDibayar),
+      formatRp(totalDiskon),
+      formatRp(totalDenda),
+      formatRp(sisa),
+      formatSyarat(inv.syarat_pembayaran),
+      st.label,
+      String(sisaHari),
+      String(hariLewatTempo)
+    ];
+  });
+
   pdf.autoTable({
-    html: '#tabel-laporan',
+    head: head,
+    body: body,
     startY: 25,
     theme: 'grid',
-    styles: { fontSize: 7, cellPadding: 2, overflow: 'linebreak' },
+    styles: { fontSize: 8, cellPadding: 2.5, overflow: 'linebreak' },
     headStyles: { fillColor: [30, 58, 138] },
     margin: { left: 10, right: 10 }
   });
   pdf.save(`laporan_utang_${todayStr()}.pdf`);
-  toast('Laporan PDF berhasil diunduh', 'success');
+  toast('Laporan PDF berhasil diunduh ✓', 'success');
 });
+
+async function resetSemuaTransaksi() {
+  if (!confirm('Apakah Anda yakin ingin mengosongkan SELURUH data Faktur, Pembayaran, dan Riwayat Aktivitas?')) return;
+  if (!ensureSupabaseReady()) return;
+
+  toast('Mengosongkan seluruh data transaksi...', '');
+
+  try {
+    await db.from('payments').delete().gte('id', 0);
+  } catch (e) {}
+
+  try {
+    await db.from('invoices').delete().gte('id', 0);
+  } catch (e) {}
+
+  try {
+    await db.from('activity_logs').delete().gte('id', 0);
+  } catch (e) {}
+
+  try {
+    localStorage.removeItem('local_activity_logs');
+  } catch (e) {}
+
+  toast('Seluruh data transaksi dan riwayat aktivitas berhasil dikosongkan ✓', 'success');
+
+  await loadInvoices();
+  await loadPaymentHistory();
+  await loadDashboard();
+  await loadLaporan();
+}
+window.resetSemuaTransaksi = resetSemuaTransaksi;
 
 // ====== INISIALISASI APLIKASI ======
 async function initApp() {
@@ -1082,6 +2073,7 @@ async function initApp() {
   }
 
   loadSuppliers();
+  loadProducts();
   loadInvoices();
   loadPaymentHistory();
   loadDashboard();

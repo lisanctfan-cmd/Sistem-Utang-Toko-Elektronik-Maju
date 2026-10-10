@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&family=Lora:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./style.css">
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.css" rel="stylesheet">
 <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
 </head>
 <body>
@@ -26,6 +27,7 @@
     <nav class="sidebar-nav tabs" aria-label="Navigasi utama">
       <button type="button" class="sidebar-link tab active" data-tab="dashboard"><i data-lucide="layout-dashboard"></i><span>Dashboard</span></button>
       <button type="button" class="sidebar-link tab" data-tab="supplier"><i data-lucide="users"></i><span>Supplier</span></button>
+      <button type="button" class="sidebar-link tab" data-tab="barang"><i data-lucide="package-2"></i><span>Data Barang</span></button>
       <button type="button" class="sidebar-link tab" data-tab="invoice"><i data-lucide="file-text"></i><span>Faktur &amp; Utang Usaha</span></button>
       <button type="button" class="sidebar-link tab" data-tab="payment"><i data-lucide="credit-card"></i><span>Pembayaran</span></button>
       <button type="button" class="sidebar-link tab" data-tab="laporan"><i data-lucide="bar-chart-3"></i><span>Laporan</span></button>
@@ -76,6 +78,23 @@
     <div class="notification-feed" id="dashboard-notifications" aria-live="polite">
       <div class="notification-empty">Memuat notifikasi...</div>
     </div>
+    <div id="notif-pagination" style="margin-top:12px;"></div>
+
+    <div class="page-heading-row" style="margin-top:32px;">
+      <div>
+        <h2 class="page-title">Riwayat Aktivitas</h2>
+        <p class="page-subtitle">Catatan aktivitas transaksi Faktur &amp; Pembayaran terbaru</p>
+      </div>
+      <div class="metric-pill">
+        <span class="metric-pill-label">Total Aktivitas:</span>
+        <span class="metric-pill-count" id="activity-count">0</span>
+      </div>
+    </div>
+
+    <div class="activity-feed" id="dashboard-activities" aria-live="polite">
+      <div class="notification-empty">Memuat riwayat aktivitas...</div>
+    </div>
+    <div id="activity-pagination" style="margin-top:12px;"></div>
   </section>
 
   <!-- SUPPLIER -->
@@ -102,6 +121,13 @@
             <span class="field-label">Kontak (Telp / Email / WA)</span>
             <input type="text" id="sup-kontak" placeholder="Contoh: 081234567890 / sales@sumber.com">
           </label>
+          <label class="field-group">
+            <span class="field-label">Status Supplier <span class="field-req">*</span></span>
+            <select id="sup-active" required>
+              <option value="true">Aktif</option>
+              <option value="false">Nonaktif</option>
+            </select>
+          </label>
           <label class="field-group span-2">
             <span class="field-label">Alamat Kantor / Gudang</span>
             <textarea id="sup-alamat" placeholder="Alamat lengkap supplier..."></textarea>
@@ -117,13 +143,87 @@
     <div class="table-container">
       <div class="table-bar">
         <div class="table-heading">Daftar Supplier</div>
+        <div class="table-search">
+          <input type="text" id="search-supplier" class="search-input" placeholder="Cari supplier (nama, kontak, alamat)..." oninput="onSupplierSearch()">
+        </div>
       </div>
       <div class="table-wrap">
         <table id="tabel-supplier">
-          <thead><tr><th>Nama Supplier</th><th>Kontak</th><th>Alamat</th><th>Aksi</th></tr></thead>
+          <thead><tr><th>Nama Supplier</th><th>Kontak</th><th>Alamat</th><th>Status</th><th>Aksi</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
+      <div id="supplier-pagination" style="margin-top:12px;"></div>
+    </div>
+  </section>
+
+  <!-- DATA BARANG -->
+  <section id="barang" class="tab-content">
+    <div class="page-heading-row">
+      <div>
+        <h1 class="page-title">Data Barang</h1>
+        <p class="page-subtitle">Kelola daftar barang toko</p>
+      </div>
+    </div>
+
+    <!-- Panel Kelola Kategori -->
+    <div class="clean-card" style="margin-bottom:12px;">
+      <div class="card-head" style="margin-bottom:10px;">
+        <h2 class="card-heading">Kelola Kategori Barang</h2>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <input type="text" id="input-new-category" placeholder="Ketik nama kategori baru..." style="flex:1; min-width:180px; max-width:280px;">
+        <button type="button" class="btn btn-primary" onclick="tambahKategori()" style="white-space:nowrap;">+ Tambah Kategori</button>
+      </div>
+      <div id="category-chips" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:10px;"></div>
+    </div>
+
+    <div class="clean-card">
+      <div class="card-head">
+        <h2 class="card-heading">Tambah / Edit Barang</h2>
+      </div>
+      <form id="form-product" class="form-layout">
+        <input type="hidden" id="product-id">
+        <div class="form-grid">
+          <label class="field-group">
+            <span class="field-label">Nama Barang <span class="field-req">*</span></span>
+            <input type="text" id="product-name" placeholder="Contoh: TV Samsung 42 Inch" required>
+          </label>
+          <label class="field-group">
+            <span class="field-label">Kategori Barang</span>
+            <select id="product-category">
+              <option value="">-- Pilih Kategori --</option>
+            </select>
+          </label>
+          <label class="field-group">
+            <span class="field-label">Status Barang <span class="field-req">*</span></span>
+            <select id="product-active" required>
+              <option value="true">Aktif</option>
+              <option value="false">Nonaktif</option>
+            </select>
+          </label>
+        </div>
+        <div class="form-actions">
+          <button type="submit" id="btn-save-product" class="btn btn-primary">Simpan Barang</button>
+          <button type="button" id="btn-cancel-product" class="btn btn-secondary" hidden>Batal Edit</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="table-container">
+      <div class="table-bar">
+        <div class="table-heading">Daftar Barang</div>
+        <div class="table-search">
+          <input type="text" id="search-product" class="search-input" placeholder="Cari barang (nama, kategori)..." oninput="onProductSearch()">
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="tabel-product">
+          <thead><tr><th>Nama Barang</th><th>Kategori</th><th>Status</th><th>Aksi</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="product-pagination" style="margin-top:12px;"></div>
     </div>
   </section>
 
@@ -143,10 +243,11 @@
       <form id="form-invoice" class="form-layout">
         <input type="hidden" id="inv-id">
         <input type="hidden" id="inv-current-bukti-url">
+        <input type="hidden" id="inv-nama-utang">
         <div class="form-grid">
           <label class="field-group span-2">
-            <span class="field-label">Nama Utang Usaha / Deskripsi Barang <span class="field-req">*</span></span>
-            <input type="text" id="inv-nama-utang" placeholder="Contoh: Pembelian Smart TV" required>
+            <span class="field-label">Nama Barang <span class="field-req">*</span></span>
+            <select id="inv-product" required></select>
           </label>
           <label class="field-group">
             <span class="field-label">Pilih Supplier <span class="field-req">*</span></span>
@@ -166,15 +267,15 @@
           </label>
           <label class="field-group">
             <span class="field-label">Total Utang Usaha (Rp) <span class="field-req">*</span></span>
-            <input type="number" id="inv-total" placeholder="0" step="0.01" required>
+            <input type="number" id="inv-total" placeholder="0" min="0.01" step="0.01" required>
           </label>
           <label class="field-group">
             <span class="field-label">Syarat Pembayaran</span>
             <input type="text" id="inv-syarat" placeholder="Contoh: 2/10 n/30">
           </label>
           <label class="field-group span-2">
-            <span class="field-label">Keterangan Tambahan</span>
-            <textarea id="inv-keterangan" placeholder="Catatan pembelian, syarat garansi, atau keterangan lainnya..."></textarea>
+            <span class="field-label">Keterangan</span>
+            <textarea id="inv-keterangan" placeholder="Jumlah barang, catatan pembelian, atau keterangan lainnya..."></textarea>
           </label>
         </div>
         <div class="form-actions">
@@ -187,18 +288,22 @@
     <div class="table-container">
       <div class="table-bar">
         <div class="table-heading">Daftar Faktur Pembelian</div>
+        <div class="table-search">
+          <input type="text" id="search-invoice" class="search-input" placeholder="Cari faktur (nama, supplier, no faktur...)..." oninput="onInvoiceSearch()">
+        </div>
       </div>
       <div class="table-wrap">
         <table id="tabel-invoice">
           <thead>
             <tr>
-              <th>Nama Utang Usaha</th><th>Supplier</th><th>No Faktur</th><th>Tgl Faktur</th><th>Jatuh Tempo</th>
-              <th>Total</th><th>Syarat</th><th>Sisa</th><th>Status</th><th>Aksi</th>
+              <th>Nama Barang</th><th>Supplier</th><th>No Faktur</th><th>Tgl Faktur</th><th>Jatuh Tempo</th>
+              <th>Total</th><th>Syarat</th><th>Sisa</th><th>Status</th><th>Keterangan</th><th>Aksi</th>
             </tr>
           </thead>
           <tbody></tbody>
         </table>
       </div>
+      <div id="invoice-pagination" style="margin-top:12px;"></div>
     </div>
   </section>
 
@@ -259,6 +364,9 @@
     <div class="table-container">
       <div class="table-bar">
         <div class="table-heading">Riwayat Transaksi Pembayaran</div>
+        <div class="table-search">
+          <input type="text" id="search-payment" class="search-input" placeholder="Cari pembayaran (nama, supplier, no faktur...)..." oninput="onPaymentSearch()">
+        </div>
       </div>
       <div class="table-wrap">
         <table id="tabel-payment">
@@ -268,6 +376,7 @@
           <tbody></tbody>
         </table>
       </div>
+      <div id="payment-pagination" style="margin-top:12px;"></div>
     </div>
   </section>
 
@@ -277,6 +386,30 @@
       <div>
         <h1 class="page-title">Laporan</h1>
         <p class="page-subtitle">Rekapitulasi historis utang usaha</p>
+      </div>
+    </div>
+
+    <!-- Summary Stats Cards -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-meta">Total Baris / Transaksi</div>
+        <div class="stat-number" id="rep-total-count">0</div>
+        <div class="stat-sub">Sesuai filter aktif</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-meta">Total Utang Usaha</div>
+        <div class="stat-number" id="rep-total-amount">Rp 0</div>
+        <div class="stat-sub">Nilai transaksi utang</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-meta">Total Pembayaran</div>
+        <div class="stat-number text-emerald" id="rep-total-paid">Rp 0</div>
+        <div class="stat-sub">Utang yang telah dibayar</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-meta">Sisa Utang Usaha</div>
+        <div class="stat-number text-rose" id="rep-total-balance">Rp 0</div>
+        <div class="stat-sub">Utang belum lunas</div>
       </div>
     </div>
 
@@ -290,6 +423,18 @@
             <option value="belum_lunas">Belum Lunas</option>
             <option value="lunas">Lunas</option>
             <option value="jatuh_tempo">Jatuh Tempo</option>
+          </select>
+        </label>
+        <label class="filter-field">
+          <span class="filter-label">Filter Supplier</span>
+          <select id="filter-supplier">
+            <option value="all">Semua Supplier</option>
+          </select>
+        </label>
+        <label class="filter-field">
+          <span class="filter-label">Filter Kategori Barang</span>
+          <select id="filter-category">
+            <option value="all">Semua Kategori</option>
           </select>
         </label>
         <label class="filter-field">
@@ -332,13 +477,16 @@
 
     <div class="table-container">
       <div class="table-bar">
-        <div class="table-heading">Tabel Rekap Historis</div>
+        <div class="table-heading">Rekapitulasi Historis Utang Usaha</div>
+        <div class="table-search">
+          <input type="text" id="search-laporan" class="search-input" placeholder="Cari di laporan..." oninput="onLaporanSearch()">
+        </div>
       </div>
       <div class="table-wrap">
         <table id="tabel-laporan">
           <thead>
             <tr>
-              <th>Nama Utang Usaha</th><th>No Faktur</th><th>Supplier</th><th>Tgl Faktur</th><th>Jatuh Tempo</th>
+              <th>Nama Barang</th><th>No Faktur</th><th>Supplier</th><th>Tgl Faktur</th><th>Jatuh Tempo</th>
               <th>Total</th><th>Dibayar</th><th>Diskon</th><th>Denda</th><th>Sisa</th>
               <th>Syarat</th><th>Status</th><th>Hari Sisa</th><th>Lewat Tempo</th>
             </tr>
@@ -346,6 +494,7 @@
           <tbody></tbody>
         </table>
       </div>
+      <div id="laporan-pagination" style="margin-top:12px;"></div>
     </div>
   </section>
 
@@ -359,6 +508,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
 <script src="../backend/app.js" defer></script>
 <script src="./script.js" defer></script>
 <script>document.addEventListener('DOMContentLoaded', () => window.lucide?.createIcons());</script>

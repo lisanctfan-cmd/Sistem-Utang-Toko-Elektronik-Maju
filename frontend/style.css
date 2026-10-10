@@ -493,7 +493,12 @@ textarea {
 }
 
 .table-bar {
-  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
 .table-heading {
@@ -502,6 +507,31 @@ textarea {
   color: var(--zinc-600);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+.table-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.search-input {
+  padding: 6px 12px;
+  border: 1px solid var(--zinc-300);
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  font-family: inherit;
+  color: var(--zinc-900);
+  background: var(--white);
+  width: 260px;
+  max-width: 100%;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.search-input:focus {
+  border-color: var(--blue-600);
+  box-shadow: 0 0 0 3px rgba(49, 95, 156, 0.12);
 }
 
 .table-wrap {
@@ -581,6 +611,44 @@ tr:hover td { background: #fafbfc; }
   background: var(--amber-50);
   color: var(--amber-700);
   border: 1px solid var(--amber-100);
+}
+
+.badge.nonaktif {
+  background: var(--zinc-100);
+  color: var(--zinc-600);
+  border: 1px solid var(--zinc-200);
+}
+
+/* ============================================================
+   CATEGORY CHIPS (KELOLA KATEGORI BARANG)
+   ============================================================ */
+.category-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--blue-50);
+  color: var(--blue-700);
+  border: 1px solid var(--blue-100);
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.chip-remove {
+  background: none;
+  border: none;
+  color: var(--blue-400);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 2px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.chip-remove:hover {
+  color: var(--rose-600);
 }
 
 /* ============================================================
@@ -1128,6 +1196,7 @@ tr:hover td { background: #fcf9f5; }
 .badge.aktif { color: #355f91; background: #eef4fb; border-color: #d9e5f3; }
 .badge.lunas { color: #347357; background: #edf6f0; border-color: #d8eadd; }
 .badge.jatuh_tempo { color: #9c4b4b; background: #fbf0ef; border-color: #efdada; }
+.badge.nonaktif { color: #667085; background: #f0f2f5; border: 1px solid #d9dee7; }
 
 .notification-feed { gap: 9px; }
 .notification-item { border-color: #e6dcd1; border-radius: 6px; box-shadow: none; }
@@ -1367,4 +1436,217 @@ tr:hover td { background: #f8fafd; }
   .hero-copy h1 { font-size: 14px; }
   .hero-copy h1 span { font-size: 18px; }
   .hero-description { max-width: 22ch; font-size: 10px; }
+}
+
+/* Pagination Styling */
+.pagination-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--white);
+  padding: 8px 14px;
+  border: 1px solid var(--zinc-200);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-subtle);
+}
+
+.pagination-info {
+  font-size: 12px;
+  color: var(--zinc-600);
+}
+
+/* Activity Feed Styling */
+.activity-feed {
+  display: grid;
+  gap: 10px;
+}
+
+.activity-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--white);
+  border: 1px solid var(--zinc-200);
+  border-left: 3px solid var(--blue-600);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-subtle);
+  gap: 16px;
+}
+
+.activity-item.tambah { border-left-color: var(--emerald-600); }
+.activity-item.edit   { border-left-color: var(--blue-600); }
+.activity-item.hapus  { border-left-color: var(--rose-600); }
+
+.activity-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.activity-topline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.activity-badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+}
+
+.activity-item.tambah .activity-badge { background: var(--emerald-100); color: var(--emerald-700); }
+.activity-item.edit   .activity-badge { background: var(--blue-100); color: var(--blue-600); }
+.activity-item.hapus  .activity-badge { background: var(--rose-100); color: var(--rose-700); }
+
+.activity-desc {
+  font-size: 13px;
+  color: var(--zinc-800);
+  font-weight: 500;
+}
+
+.activity-time {
+  font-size: 11.5px;
+  color: var(--zinc-400);
+  white-space: nowrap;
+}
+
+/* ============================================================
+   TOM SELECT (SEARCHABLE DROPDOWNS)
+   ============================================================ */
+.ts-wrapper {
+  width: 100%;
+}
+
+.ts-wrapper.single .ts-control {
+  min-height: 38px;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--zinc-300);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-family: var(--font-sans);
+  color: var(--zinc-950);
+  background: var(--white);
+  box-shadow: none;
+  display: flex;
+  align-items: center;
+  cursor: text;
+  position: relative;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  overflow: hidden;
+}
+
+.ts-wrapper.single .ts-control .item {
+  color: var(--zinc-950);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0;
+  margin: 0;
+  line-height: 36px;
+  flex: 1;
+}
+
+/* Saat operator mulai mengetik, sembunyikan item lama agar ketikan huruf demi huruf terlihat jelas */
+.ts-wrapper.single.input-active .ts-control .item {
+  display: none !important;
+}
+
+.ts-wrapper.single .ts-control input {
+  font-family: var(--font-sans) !important;
+  font-size: 13px !important;
+  color: var(--zinc-950) !important;
+  height: 36px !important;
+  line-height: 36px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+.ts-wrapper.single.input-active .ts-control input {
+  width: 100% !important;
+  flex: 1 1 auto !important;
+  opacity: 1 !important;
+  display: block !important;
+}
+
+.ts-wrapper.single .ts-control input::placeholder {
+  color: var(--zinc-400);
+}
+
+.ts-wrapper.single.input-active .ts-control,
+.ts-wrapper.single.focus .ts-control {
+  border-color: var(--zinc-950);
+  box-shadow: 0 0 0 1px var(--zinc-950);
+  background: var(--white);
+}
+
+.ts-wrapper:hover .ts-control {
+  border-color: var(--zinc-400);
+}
+
+.ts-wrapper.single.focus:hover .ts-control {
+  border-color: var(--zinc-950);
+}
+
+.ts-dropdown {
+  border: 1px solid var(--zinc-300);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-float);
+  background: var(--white);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  margin-top: 4px;
+  z-index: 1050;
+}
+
+.ts-dropdown .ts-dropdown-content {
+  max-height: 220px;
+  padding: 4px;
+}
+
+.ts-dropdown .option {
+  padding: 8px 12px;
+  border-radius: var(--radius-xs);
+  color: var(--zinc-800);
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.ts-dropdown .option:hover,
+.ts-dropdown .option.active {
+  background: var(--zinc-100);
+  color: var(--zinc-950);
+}
+
+.ts-dropdown .option.selected {
+  background: var(--blue-50);
+  color: var(--blue-600);
+  font-weight: 600;
+}
+
+.ts-dropdown .create {
+  padding: 8px 12px;
+  color: var(--blue-600);
+  font-weight: 500;
+}
+
+.ts-dropdown .create:hover,
+.ts-dropdown .create.active {
+  background: var(--blue-50);
+}
+
+.ts-dropdown .no-results {
+  padding: 8px 12px;
+  color: var(--zinc-400);
+  font-size: 12.5px;
+  font-style: italic;
 }
