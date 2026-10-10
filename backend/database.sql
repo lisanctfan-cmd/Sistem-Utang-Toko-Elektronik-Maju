@@ -1,9 +1,9 @@
 -- ============================================================
 -- DATABASE SCHEMA: SISTEM PENCATATAN UTANG (TOKO ELEKTRONIK MAJU)
--- ENTITAS (4 ENTITAS SCHEMAS): suppliers, products, invoices, payments
+-- ENTITAS (4 ENTITAS UTAMA): suppliers, products, invoices, payments
 -- ============================================================
 
--- 1. HAPUS TABEL LAMA JIKA SUDAH ADA (AGAR TER-UPDATE DENGAN BERSIH DI SUPABASE)
+-- 1. HAPUS TABEL LAMA JIKA SUDAH ADA (CASCADE)
 DROP TABLE IF EXISTS public.activity_logs CASCADE;
 DROP TABLE IF EXISTS public.payments CASCADE;
 DROP TABLE IF EXISTS public.invoices CASCADE;

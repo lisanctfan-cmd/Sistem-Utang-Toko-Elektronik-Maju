@@ -71,8 +71,13 @@ function initTomSelect(id, extraOptions = {}) {
     openOnFocus: true,
     closeAfterSelect: true,
     selectOnTab: true,
+    hideSelected: false,
     searchField: ['text'],
     highlight: true,
+    onItemAdd: function() {
+      this.setTextboxValue('');
+      this.refreshOptions(false);
+    },
     render: {
       option_create: function(data, escape) {
         return '<div class="create">+ Gunakan baru: <strong>' + escape(data.input) + '</strong></div>';
@@ -332,6 +337,7 @@ document.getElementById('form-supplier').addEventListener('submit', async (e) =>
     ? await db.from('suppliers').update(payload).eq('id', supplierId)
     : await db.from('suppliers').insert(payload);
   if (error) return toast('Gagal: ' + error.message, 'error');
+
   toast(supplierId ? 'Supplier berhasil diperbarui' : 'Supplier tersimpan ✓', 'success');
   e.target.reset();
   resetSupplierEdit();
@@ -375,6 +381,7 @@ async function hapusSupplier(id) {
   const { error } = await db.from('suppliers').delete().eq('id', id);
   if (error) return toast('Gagal: ' + error.message, 'error');
   toast('Supplier dihapus', 'success');
+
   loadSuppliers();
   loadInvoices();
   loadPaymentHistory();
@@ -644,6 +651,7 @@ async function hapusProduct(id) {
   const { error } = await db.from('products').delete().eq('id', id);
   if (error) return toast('Gagal menghapus barang: ' + error.message, 'error');
   toast('Barang dihapus', 'success');
+
   loadProducts();
   loadInvoices();
 }
@@ -717,13 +725,6 @@ document.getElementById('form-invoice').addEventListener('submit', async (e) => 
     : await db.from('invoices').insert(payload);
 
   if (error) return toast('Gagal simpan faktur: ' + error.message, 'error');
-
-  const supObj = loadedSuppliers.find(s => String(s.id) === String(payload.supplier_id));
-  const supName = supObj ? supObj.nama : 'Supplier';
-  const desc = invoiceId
-    ? `Memperbarui Faktur #${payload.nomor_faktur} (${payload.nama_utang}) - Total: ${formatRp(totalAmount)}`
-    : `Menambahkan Faktur #${payload.nomor_faktur} (${payload.nama_utang}) dari ${supName} - Total: ${formatRp(totalAmount)}`;
-  await logActivity(invoiceId ? 'Edit Faktur' : 'Tambah Faktur', desc);
 
   toast(invoiceId ? 'Faktur berhasil diperbarui ✓' : `Faktur tersimpan ✓ Jatuh tempo: ${formatTanggal(jatuhTempo)}`, 'success');
   e.target.reset();
@@ -876,17 +877,12 @@ function changeInvoicePage(delta) {
 window.changeInvoicePage = changeInvoicePage;
 
 async function hapusInvoice(id) {
-  const invToDelete = loadedInvoices.find(item => String(item.id) === String(id));
   if (!confirm('Hapus faktur ini?')) return;
   if (!ensureSupabaseReady()) return;
 
   const { error } = await db.from('invoices').delete().eq('id', id);
   if (error) return toast('Gagal: ' + error.message, 'error');
   toast('Faktur dihapus', 'success');
-
-  if (invToDelete) {
-    await logActivity('Hapus Faktur', `Menghapus Faktur #${invToDelete.nomor_faktur} (${invToDelete.nama_utang || ''})`);
-  }
 
   loadInvoices();
   loadDashboard();
@@ -1021,11 +1017,6 @@ document.getElementById('form-payment').addEventListener('submit', async (e) => 
 
   if (error) return toast('Gagal simpan pembayaran: ' + error.message, 'error');
 
-  const desc = paymentId
-    ? `Memperbarui pembayaran ${formatRp(bayar)} untuk Faktur #${inv.nomor_faktur} (${inv.nama_utang || ''})`
-    : `Mencatat pembayaran ${formatRp(bayar)} via ${metode} untuk Faktur #${inv.nomor_faktur} (${inv.nama_utang || ''})`;
-  await logActivity(paymentId ? 'Edit Pembayaran' : 'Tambah Pembayaran', desc);
-
   const sisaSesudah = Math.max(0, totalTagihan - bayar - (disk.berhak ? disk.diskonRp : 0));
   toast(paymentId ? 'Pembayaran berhasil diperbarui ✓' : sisaSesudah <= 0.01 && disk.diskonRp > 0
     ? `Pembayaran tersimpan. Faktur lunas dengan diskon ${formatRp(disk.diskonRp)} ✓`
@@ -1130,21 +1121,9 @@ async function hapusPembayaran(id) {
   if (!confirm('Hapus transaksi pembayaran ini? Saldo utang usaha akan dihitung ulang.')) return;
   if (!ensureSupabaseReady()) return;
 
-  const { data: payToDelete } = await db
-    .from('payments')
-    .select('*, invoices(nomor_faktur, nama_utang)')
-    .eq('id', id)
-    .single();
-
   const { error } = await db.from('payments').delete().eq('id', id);
   if (error) return toast('Gagal hapus pembayaran: ' + error.message, 'error');
   toast('Pembayaran dihapus', 'success');
-
-  if (payToDelete) {
-    const noInv = payToDelete.invoices?.nomor_faktur || '';
-    const namaUtang = payToDelete.invoices?.nama_utang || '';
-    await logActivity('Hapus Pembayaran', `Menghapus pembayaran ${formatRp(payToDelete.jumlah_bayar)} untuk Faktur #${noInv} (${namaUtang})`);
-  }
 
   loadInvoices();
   loadPaymentHistory();
@@ -1222,21 +1201,26 @@ const ACTIVITY_PER_PAGE = 5;
 
 async function logActivity(type, description) {
   const item = { id: Date.now(), type, description, created_at: new Date().toISOString() };
-  if (db) {
-    try {
-      const { error } = await db.from('activity_logs').insert({ type, description });
-      if (!error) {
-        loadActivityLogs();
-        return;
-      }
-    } catch (err) {}
-  }
+  
+  // 1. Simpan ke local storage selalu (sebagai cache / offline fallback)
   try {
     const list = JSON.parse(localStorage.getItem('local_activity_logs') || '[]');
     list.unshift(item);
+    if (list.length > 100) list.length = 100;
     localStorage.setItem('local_activity_logs', JSON.stringify(list));
   } catch (err) {}
-  loadActivityLogs();
+
+  // 2. Simpan ke Supabase jika tabel activity_logs tersedia
+  if (db) {
+    try {
+      const { error } = await db.from('activity_logs').insert({ type, description });
+      if (error && error.code !== 'PGRST205') {
+        console.warn('Gagal menyimpan activity log ke Supabase:', error.message);
+      }
+    } catch (err) {}
+  }
+
+  await loadActivityLogs();
 }
 
 async function loadDashboard() {
@@ -1372,20 +1356,27 @@ function changeNotifPage(delta) {
 }
 window.changeNotifPage = changeNotifPage;
 
-function resetActivityLogs() {
+async function resetActivityLogs() {
   cachedActivities = [];
   try {
     localStorage.removeItem('local_activity_logs');
   } catch (e) {}
+  if (db) {
+    try {
+      await db.from('activity_logs').delete().gte('id', 0);
+    } catch (e) {}
+  }
   const countEl = document.getElementById('activity-count');
   if (countEl) countEl.textContent = 0;
   currentActivityPage = 1;
   renderDashboardActivitiesPage();
+  toast('Riwayat aktivitas berhasil dibersihkan ✓', 'success');
 }
 window.resetActivityLogs = resetActivityLogs;
 
 async function loadActivityLogs() {
   let logs = [];
+
   if (db) {
     try {
       const { data, error } = await db
@@ -1393,21 +1384,17 @@ async function loadActivityLogs() {
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (!error && data && data.length > 0) {
+      if (!error && Array.isArray(data) && data.length > 0) {
         logs = data;
+        try {
+          localStorage.setItem('local_activity_logs', JSON.stringify(logs));
+        } catch (e) {}
       }
     } catch (err) {}
   }
 
-  if (logs.length === 0) {
-    try {
-      logs = JSON.parse(localStorage.getItem('local_activity_logs') || '[]');
-    } catch (err) {
-      logs = [];
-    }
-  }
-
-  // Jika riwayat aktivitas masih kosong, otomatis tarik faktur & pembayaran yang ada di database
+  // Jika di database tidak ada activity_logs dan data transaksi (invoices) juga kosong,
+  // bersihkan cache lokal agar data lama tidak muncul kembali.
   if (logs.length === 0 && db) {
     let sourceInvoices = loadedInvoices;
     if (!sourceInvoices || sourceInvoices.length === 0) {
@@ -1419,7 +1406,14 @@ async function loadActivityLogs() {
       } catch (err) {}
     }
 
-    if (sourceInvoices && sourceInvoices.length > 0) {
+    if (!sourceInvoices || sourceInvoices.length === 0) {
+      // Database benar-benar kosong: bersihkan local storage
+      try {
+        localStorage.removeItem('local_activity_logs');
+      } catch (e) {}
+      logs = [];
+    } else {
+      // Jika ada faktur di DB, baru kita turunkan riwayat dari faktur tersebut
       const derivedLogs = [];
       sourceInvoices.forEach(inv => {
         const supName = inv.suppliers?.nama || 'Supplier';
@@ -1444,6 +1438,14 @@ async function loadActivityLogs() {
       try {
         localStorage.setItem('local_activity_logs', JSON.stringify(logs));
       } catch (e) {}
+    }
+  }
+
+  if (logs.length === 0 && !db) {
+    try {
+      logs = JSON.parse(localStorage.getItem('local_activity_logs') || '[]');
+    } catch (err) {
+      logs = [];
     }
   }
 

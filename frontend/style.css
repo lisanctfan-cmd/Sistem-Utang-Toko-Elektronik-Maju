@@ -1519,6 +1519,7 @@ tr:hover td { background: #f8fafd; }
    TOM SELECT (SEARCHABLE DROPDOWNS)
    ============================================================ */
 .ts-wrapper {
+  position: relative;
   width: 100%;
 }
 
@@ -1535,28 +1536,34 @@ tr:hover td { background: #f8fafd; }
   box-shadow: none;
   display: flex;
   align-items: center;
-  cursor: text;
+  cursor: pointer;
   position: relative;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
   overflow: hidden;
 }
 
+/* Item terpilih yang tampil di dalam dropdown */
 .ts-wrapper.single .ts-control .item {
-  color: var(--zinc-950);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  padding: 0;
-  margin: 0;
-  line-height: 36px;
-  flex: 1;
+  color: var(--zinc-950) !important;
+  font-weight: 500 !important;
+  font-size: 13px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  line-height: 36px !important;
+  width: 100% !important;
+  flex: 1 1 auto !important;
+  display: block !important;
 }
 
-/* Saat operator mulai mengetik, sembunyikan item lama agar ketikan huruf demi huruf terlihat jelas */
+/* Sembunyikan item lama hanya saat sedang aktif mengetik query baru */
 .ts-wrapper.single.input-active .ts-control .item {
   display: none !important;
 }
 
+/* Input ketikan */
 .ts-wrapper.single .ts-control input {
   font-family: var(--font-sans) !important;
   font-size: 13px !important;
@@ -1571,11 +1578,24 @@ tr:hover td { background: #f8fafd; }
   background: transparent !important;
 }
 
-.ts-wrapper.single.input-active .ts-control input {
+/* Saat ada item terpilih dan tidak sedang mengetik, sembunyikan input agar item terlihat utuh */
+.ts-wrapper.single.has-items:not(.input-active) .ts-control input {
+  position: absolute !important;
+  left: -9999px !important;
+  opacity: 0 !important;
+  width: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Saat sedang mengetik atau belum ada item, tampilkan input penuh */
+.ts-wrapper.single.input-active .ts-control input,
+.ts-wrapper.single:not(.has-items) .ts-control input {
+  position: static !important;
+  opacity: 1 !important;
   width: 100% !important;
   flex: 1 1 auto !important;
-  opacity: 1 !important;
   display: block !important;
+  pointer-events: auto !important;
 }
 
 .ts-wrapper.single .ts-control input::placeholder {
@@ -1598,6 +1618,10 @@ tr:hover td { background: #f8fafd; }
 }
 
 .ts-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
   border: 1px solid var(--zinc-300);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-float);
@@ -1606,11 +1630,13 @@ tr:hover td { background: #f8fafd; }
   font-size: 13px;
   margin-top: 4px;
   z-index: 1050;
+  box-sizing: border-box;
 }
 
 .ts-dropdown .ts-dropdown-content {
   max-height: 220px;
   padding: 4px;
+  overflow-y: auto;
 }
 
 .ts-dropdown .option {
