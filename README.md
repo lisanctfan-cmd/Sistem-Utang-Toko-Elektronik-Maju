@@ -2,7 +2,7 @@
 
 Aplikasi web untuk mengelola utang usaha, data supplier, faktur, pembayaran, dan laporan historis secara terintegrasi dengan **Supabase PostgreSQL**.
 
-**Live Demo:** [Sistem Utang Usaha Toko Elektronik](https://lisanctfan-cmd.github.io/Sistem-Utang-Toko-Elektronik-Maju/)
+**Live Demo:** [Sistem Utang Usaha Toko Elektronik Maju](https://lisanctfan-cmd.github.io/Sistem-Utang-Toko-Elektronik-Maju/)
 ## Fitur Utama
 
 * **Dashboard:** Ringkasan utang usaha dan notifikasi jatuh tempo, batas diskon, serta keterlambatan pembayaran.
