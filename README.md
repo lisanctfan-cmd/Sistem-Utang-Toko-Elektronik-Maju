@@ -35,13 +35,6 @@ sistem-utang/
 
 Folder `frontend` berisi antarmuka dan interaksi aplikasi, sedangkan folder `backend` berisi logika bisnis serta skema database untuk Supabase. Logika aplikasi dijalankan di browser dan tidak menggunakan server Node.js terpisah.
 
-## Cara Menjalankan
-
-1. Siapkan proyek database di [Supabase](https://supabase.com/).
-2. Jalankan skrip `backend/database.sql` melalui SQL Editor Supabase.
-3. Sesuaikan `SUPABASE_URL` dan `SUPABASE_ANON_KEY` pada `frontend/script.js`.
-4. Buka `frontend/index.html` melalui browser atau gunakan ekstensi Live Server di VS Code.
-
 **Catatan:** Pastikan kebijakan keamanan database (RLS dan policy) dikonfigurasi dengan benar sebelum aplikasi digunakan dengan data nyata.
 
 ---
