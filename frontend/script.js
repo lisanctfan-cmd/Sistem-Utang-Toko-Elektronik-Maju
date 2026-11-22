@@ -23,8 +23,12 @@ let loadedCategories = [];
 let loadedProducts = [];
 let loadedPaymentHistory = [];
 let cachedFilteredLaporanRows = [];
+let cachedDashboardInvoices = [];
 let selectedPaymentInvoice = null;
 let invoicesLoadPromise = null;
+let selectedDashboardMetric = 'purchases';
+let selectedDashboardValueMode = 'currency';
+let dashboardTrendRangeChanged = false;
 
 let currentSupplierPage = 1;
 const SUPPLIER_PER_PAGE = 5;
@@ -1232,9 +1236,32 @@ async function loadDashboard() {
 
   const { data, error } = await db
     .from('invoices')
-    .select('*, suppliers(nama), payments(jumlah_bayar, diskon_didapat, denda_dikenakan)');
+    .select('*, suppliers(nama), payments(jumlah_bayar, diskon_didapat, denda_dikenakan, tanggal_bayar)');
 
   if (error) return toast('Gagal load dashboard: ' + error.message, 'error');
+  cachedDashboardInvoices = data || [];
+  if (!dashboardTrendRangeChanged) {
+    const invoiceDates = cachedDashboardInvoices
+      .map(invoice => invoice.tanggal_faktur)
+      .filter(Boolean)
+      .sort();
+    const startInput = document.getElementById('trend-start-date');
+    const endInput = document.getElementById('trend-end-date');
+    if (startInput && endInput) {
+      if (invoiceDates.length) {
+        startInput.value = invoiceDates[0];
+        endInput.value = invoiceDates[invoiceDates.length - 1] > todayStr()
+          ? invoiceDates[invoiceDates.length - 1]
+          : todayStr();
+      } else {
+        const defaultStart = new Date(`${todayStr()}T00:00:00Z`);
+        defaultStart.setUTCDate(defaultStart.getUTCDate() - 29);
+        startInput.value = defaultStart.toISOString().slice(0, 10);
+        endInput.value = todayStr();
+      }
+    }
+  }
+  renderDashboardTrend();
 
   const batasDekatTempo = 7;
   const batasDekatDiskon = 7;
@@ -1359,6 +1386,295 @@ function changeNotifPage(delta) {
   }
 }
 window.changeNotifPage = changeNotifPage;
+
+const dashboardTrendMetrics = {
+  purchases: {
+    label: 'pembelian',
+    countLabel: 'faktur pembelian',
+    eventsForInvoice: invoice => [{
+      date: invoice.tanggal_faktur,
+      amount: Number(invoice.total_amount || 0),
+      invoiceId: invoice.id
+    }]
+  },
+  paid: {
+    label: 'terbayar',
+    countLabel: 'faktur dengan pembayaran',
+    eventsForInvoice: invoice => (invoice.payments || []).map(payment => ({
+      date: payment.tanggal_bayar,
+      amount: Number(payment.jumlah_bayar || 0) + Number(payment.diskon_didapat || 0),
+      invoiceId: invoice.id
+    }))
+  },
+  late: {
+    label: 'terlambat',
+    countLabel: 'faktur terlambat',
+    eventsForInvoice: (invoice, balance) => {
+      const settlementDate = balance <= 0.009
+        ? getInvoiceSettlementDate(invoice, invoice.payments)
+        : null;
+      if (settlementDate && settlementDate > invoice.tanggal_jatuh_tempo) {
+        return [{ date: settlementDate, amount: Number(invoice.total_amount || 0), invoiceId: invoice.id }];
+      }
+      if (balance > 0.009 && invoice.tanggal_jatuh_tempo < todayStr()) {
+        return [{ date: invoice.tanggal_jatuh_tempo, amount: balance, invoiceId: invoice.id }];
+      }
+      return [];
+    }
+  }
+};
+
+function getDashboardTrendBuckets(startDate, endDate) {
+  const start = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
+  const dayCount = Math.round((end - start) / 86400000) + 1;
+  const bucketType = dayCount <= 31 ? 'day' : dayCount <= 180 ? 'week' : 'month';
+  const buckets = [];
+
+  if (bucketType === 'month') {
+    const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+    while (cursor <= end) {
+      const date = cursor.toISOString().slice(0, 10);
+      buckets.push({ date, amount: 0, count: 0, invoiceIds: new Set() });
+      cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+    }
+    return { buckets, bucketType };
+  }
+
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    buckets.push({ date: cursor.toISOString().slice(0, 10), amount: 0, count: 0, invoiceIds: new Set() });
+    cursor.setUTCDate(cursor.getUTCDate() + (bucketType === 'week' ? 7 : 1));
+  }
+  return { buckets, bucketType };
+}
+
+function getDashboardBucketIndex(date, buckets, bucketType) {
+  if (bucketType === 'month') {
+    return buckets.findIndex(bucket => bucket.date.slice(0, 7) === date.slice(0, 7));
+  }
+
+  const first = new Date(`${buckets[0].date}T00:00:00Z`);
+  const current = new Date(`${date}T00:00:00Z`);
+  const daysFromStart = Math.floor((current - first) / 86400000);
+  return bucketType === 'week' ? Math.floor(daysFromStart / 7) : daysFromStart;
+}
+
+function formatDashboardBucketLabel(date, bucketType) {
+  if (bucketType === 'month') {
+    return new Date(`${date}T00:00:00Z`).toLocaleDateString('id-ID', {
+      month: 'short',
+      year: '2-digit',
+      timeZone: 'UTC'
+    });
+  }
+  return `${date.slice(8, 10)}/${date.slice(5, 7)}`;
+}
+
+function formatDashboardAxisAmount(amount) {
+  const absAmount = Math.abs(amount);
+  if (absAmount >= 1_000_000_000) return `Rp ${(amount / 1_000_000_000).toLocaleString('id-ID', { maximumFractionDigits: 1 })} M`;
+  if (absAmount >= 1_000_000) return `Rp ${(amount / 1_000_000).toLocaleString('id-ID', { maximumFractionDigits: 1 })} jt`;
+  if (absAmount >= 1_000) return `Rp ${(amount / 1_000).toLocaleString('id-ID', { maximumFractionDigits: 1 })} rb`;
+  return `Rp ${Math.round(amount).toLocaleString('id-ID')}`;
+}
+
+function renderDashboardTrend() {
+  const startInput = document.getElementById('trend-start-date');
+  const endInput = document.getElementById('trend-end-date');
+  const chart = document.getElementById('trend-chart');
+  if (!startInput || !endInput || !chart) return;
+  chart.closest('.dashboard-trend-card').dataset.metric = selectedDashboardMetric;
+
+  const startDate = startInput.value;
+  const endDate = endInput.value;
+  const status = document.getElementById('trend-status');
+  const totalEl = document.getElementById('trend-total');
+  const summaryLabel = document.getElementById('trend-summary-label');
+  const pointDetail = document.getElementById('trend-point-detail');
+  const metric = dashboardTrendMetrics[selectedDashboardMetric];
+  chart.closest('.dashboard-trend-card').dataset.valueMode = selectedDashboardValueMode;
+  summaryLabel.textContent = selectedDashboardValueMode === 'count'
+    ? metric.countLabel
+    : `total ${metric.label}`;
+
+  if (!startDate || !endDate || startDate > endDate) {
+    totalEl.textContent = selectedDashboardValueMode === 'count' ? '0' : formatRp(0);
+    status.textContent = 'Pilih rentang tanggal yang valid; tanggal awal tidak boleh melewati tanggal akhir.';
+    chart.innerHTML = '';
+    pointDetail.textContent = 'Pilih rentang tanggal yang valid untuk melihat detail grafik.';
+    return;
+  }
+
+  const { buckets, bucketType } = getDashboardTrendBuckets(startDate, endDate);
+  const invoiceIdsInRange = new Set();
+  for (const invoice of cachedDashboardInvoices) {
+    const balance = getInvoiceBalance(invoice, invoice.payments);
+    for (const event of metric.eventsForInvoice(invoice, balance)) {
+      if (!event.date || event.date < startDate || event.date > endDate || event.amount <= 0) continue;
+      const index = getDashboardBucketIndex(event.date, buckets, bucketType);
+      if (index >= 0 && index < buckets.length) {
+        const bucket = buckets[index];
+        bucket.amount += event.amount;
+        if (!bucket.invoiceIds.has(String(event.invoiceId))) {
+          bucket.invoiceIds.add(String(event.invoiceId));
+          bucket.count += 1;
+        }
+        invoiceIdsInRange.add(String(event.invoiceId));
+      }
+    }
+  }
+
+  const total = buckets.reduce((sum, bucket) => sum + bucket.amount, 0);
+  totalEl.textContent = selectedDashboardValueMode === 'count'
+    ? invoiceIdsInRange.size.toLocaleString('id-ID')
+    : formatRp(total);
+  status.textContent = `Pengelompokan ${bucketType === 'day' ? 'harian' : bucketType === 'week' ? 'mingguan' : 'bulanan'} · pilih titik grafik untuk melihat detail.`;
+  chart.innerHTML = `${renderDashboardTrendSvg(buckets, bucketType, startDate, endDate, selectedDashboardValueMode)}
+    ${total === 0 ? '<div class="dashboard-trend-empty">Belum ada transaksi pada periode ini. Coba pilih rentang tanggal lain.</div>' : ''}`;
+  pointDetail.textContent = total === 0
+    ? 'Belum ada detail transaksi untuk ditampilkan.'
+    : 'Arahkan kursor, fokuskan, atau ketuk titik grafik untuk melihat jumlah faktur dan nilai Rupiah.';
+  bindDashboardTrendPointDetails(buckets, bucketType, startDate, endDate);
+}
+
+function getDashboardBucketRangeLabel(bucket, index, buckets, bucketType, startDate, endDate) {
+  if (bucketType === 'day') return formatTanggal(bucket.date);
+  if (bucketType === 'month') {
+    return new Date(`${bucket.date}T00:00:00Z`).toLocaleDateString('id-ID', {
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'UTC'
+    });
+  }
+
+  const rangeStart = bucket.date < startDate ? startDate : bucket.date;
+  const nextBucket = buckets[index + 1];
+  const proposedEnd = nextBucket
+    ? new Date(new Date(`${nextBucket.date}T00:00:00Z`).getTime() - 86400000).toISOString().slice(0, 10)
+    : endDate;
+  const rangeEnd = proposedEnd > endDate ? endDate : proposedEnd;
+  return `${formatTanggal(rangeStart)} – ${formatTanggal(rangeEnd)}`;
+}
+
+function bindDashboardTrendPointDetails(buckets, bucketType, startDate, endDate) {
+  const detail = document.getElementById('trend-point-detail');
+  document.querySelectorAll('#trend-chart .trend-point').forEach(point => {
+    const showDetail = () => {
+      const index = Number(point.dataset.index);
+      const bucket = buckets[index];
+      if (!bucket) return;
+      const range = getDashboardBucketRangeLabel(bucket, index, buckets, bucketType, startDate, endDate);
+      detail.textContent = `${range} · ${bucket.count.toLocaleString('id-ID')} faktur · ${formatRp(bucket.amount)}`;
+    };
+    point.addEventListener('pointerenter', showDetail);
+    point.addEventListener('focus', showDetail);
+    point.addEventListener('click', showDetail);
+  });
+}
+
+function renderDashboardTrendSvg(buckets, bucketType, startDate, endDate, valueMode) {
+  if (buckets.length === 0) return '';
+
+  const width = 760;
+  const height = 250;
+  const left = valueMode === 'currency' ? 88 : 50;
+  const right = 18;
+  const top = 14;
+  const bottom = 40;
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+  const maxValue = Math.max(0, ...buckets.map(bucket => valueMode === 'count' ? bucket.count : bucket.amount));
+  const rawStep = Math.max(1, maxValue / 4);
+  const magnitude = 10 ** Math.floor(Math.log10(rawStep));
+  const normalizedStep = rawStep / magnitude;
+  const step = (normalizedStep <= 1 ? 1 : normalizedStep <= 2 ? 2 : normalizedStep <= 5 ? 5 : 10) * magnitude;
+  const maxAxis = Math.max(step * 4, Math.ceil(maxValue / step) * step);
+  const x = index => buckets.length === 1
+    ? left + plotWidth / 2
+    : left + (index / (buckets.length - 1)) * plotWidth;
+  const getValue = bucket => valueMode === 'count' ? bucket.count : bucket.amount;
+  const y = value => top + plotHeight - (value / maxAxis) * plotHeight;
+  const linePoints = buckets.map((bucket, index) => `${x(index)},${y(getValue(bucket))}`);
+  const areaPoints = `${x(0)},${top + plotHeight} ${linePoints.join(' ')} ${x(buckets.length - 1)},${top + plotHeight}`;
+  const grid = Array.from({ length: 5 }, (_, index) => {
+    const value = maxAxis - index * maxAxis / 4;
+    const position = y(value);
+    return `<line x1="${left}" y1="${position}" x2="${width - right}" y2="${position}" class="trend-grid-line"></line>
+      <text x="${left - 10}" y="${position + 4}" text-anchor="end" class="trend-axis-label">${valueMode === 'count' ? Math.round(value).toLocaleString('id-ID') : formatDashboardAxisAmount(value)}</text>`;
+  }).join('');
+  const labelStep = Math.max(1, Math.ceil(buckets.length / 7));
+  const labels = buckets.map((bucket, index) => {
+    if (index % labelStep !== 0 && index !== buckets.length - 1) return '';
+    return `<text x="${x(index)}" y="${height - 12}" text-anchor="middle" class="trend-axis-label">${formatDashboardBucketLabel(bucket.date, bucketType)}</text>`;
+  }).join('');
+  const dots = buckets.map((bucket, index) => {
+    const label = formatDashboardBucketLabel(bucket.date, bucketType);
+    const displayedValue = valueMode === 'count'
+      ? `${bucket.count.toLocaleString('id-ID')} faktur`
+      : formatRp(bucket.amount);
+    const accessibleLabel = `${label}: ${bucket.count.toLocaleString('id-ID')} faktur, ${formatRp(bucket.amount)}`;
+    return `<g class="trend-point" data-index="${index}" tabindex="0" role="button" aria-label="${accessibleLabel}">
+      <circle cx="${x(index)}" cy="${y(getValue(bucket))}" r="11" class="trend-point-hit"></circle>
+      <circle cx="${x(index)}" cy="${y(getValue(bucket))}" r="4" class="trend-point-visible"></circle>
+      <title>${label}: ${displayedValue}</title>
+    </g>`;
+  }).join('');
+
+  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Grafik ${valueMode === 'count' ? 'jumlah faktur' : 'nilai rupiah'} dari ${formatTanggal(startDate)} sampai ${formatTanggal(endDate)}" preserveAspectRatio="none">
+    <defs>
+      <linearGradient id="trend-area-gradient" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0%" stop-color="var(--trend-color)" stop-opacity=".2"></stop>
+        <stop offset="100%" stop-color="var(--trend-color)" stop-opacity="0"></stop>
+      </linearGradient>
+    </defs>
+    ${grid}
+    <polygon points="${areaPoints}" class="trend-area"></polygon>
+    <polyline points="${linePoints.join(' ')}" class="trend-line"></polyline>
+    ${dots}
+    ${labels}
+  </svg>`;
+}
+
+function bindDashboardTrendEvents() {
+  const startInput = document.getElementById('trend-start-date');
+  const endInput = document.getElementById('trend-end-date');
+  if (!startInput || !endInput) return;
+
+  const today = todayStr();
+  const defaultStart = new Date(`${today}T00:00:00Z`);
+  defaultStart.setUTCDate(defaultStart.getUTCDate() - 29);
+  startInput.value = defaultStart.toISOString().slice(0, 10);
+  endInput.value = today;
+  const handleDateChange = () => {
+    dashboardTrendRangeChanged = true;
+    renderDashboardTrend();
+  };
+  startInput.addEventListener('change', handleDateChange);
+  endInput.addEventListener('change', handleDateChange);
+  document.querySelectorAll('.trend-metric-button').forEach(button => {
+    button.addEventListener('click', () => {
+      selectedDashboardMetric = button.dataset.metric;
+      document.querySelectorAll('.trend-metric-button').forEach(metricButton => {
+        const isSelected = metricButton === button;
+        metricButton.classList.toggle('active', isSelected);
+        metricButton.setAttribute('aria-pressed', String(isSelected));
+      });
+      renderDashboardTrend();
+    });
+  });
+  document.querySelectorAll('.trend-value-button').forEach(button => {
+    button.addEventListener('click', () => {
+      selectedDashboardValueMode = button.dataset.valueMode;
+      document.querySelectorAll('.trend-value-button').forEach(valueButton => {
+        const isSelected = valueButton === button;
+        valueButton.classList.toggle('active', isSelected);
+        valueButton.setAttribute('aria-pressed', String(isSelected));
+      });
+      renderDashboardTrend();
+    });
+  });
+}
 
 async function resetActivityLogs() {
   cachedActivities = [];
@@ -2070,6 +2386,7 @@ window.resetSemuaTransaksi = resetSemuaTransaksi;
 // ====== INISIALISASI APLIKASI ======
 async function initApp() {
   bindTabs();
+  bindDashboardTrendEvents();
   bindLaporanEvents();
   activateTab('dashboard');
 

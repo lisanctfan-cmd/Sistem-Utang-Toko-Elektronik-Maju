@@ -79,6 +79,45 @@
       <div class="notification-empty">Memuat notifikasi...</div>
     </div>
     <div id="notif-pagination" style="margin-top:12px;"></div>
+
+    <section class="dashboard-trend-card clean-card" aria-labelledby="dashboard-trend-title">
+      <div class="dashboard-trend-header">
+        <div>
+          <span class="dashboard-trend-eyebrow">RINGKASAN LAPORAN</span>
+          <h2 class="card-heading" id="dashboard-trend-title">Aktivitas Utang Usaha</h2>
+        </div>
+        <div class="dashboard-trend-dates">
+          <label>
+            <span>DARI TANGGAL</span>
+            <input id="trend-start-date" type="date" aria-label="Tanggal awal grafik">
+          </label>
+          <label>
+            <span>SAMPAI TANGGAL</span>
+            <input id="trend-end-date" type="date" aria-label="Tanggal akhir grafik">
+          </label>
+        </div>
+      </div>
+      <div class="dashboard-trend-toolbar">
+        <div class="dashboard-trend-controls" role="group" aria-label="Pilih data grafik">
+          <button type="button" class="trend-metric-button active" data-metric="purchases" aria-pressed="true">Pembelian</button>
+          <button type="button" class="trend-metric-button" data-metric="paid" aria-pressed="false">Terbayar</button>
+          <button type="button" class="trend-metric-button" data-metric="late" aria-pressed="false">Terlambat</button>
+        </div>
+        <div class="dashboard-trend-value-controls" role="group" aria-label="Pilih satuan grafik">
+          <button type="button" class="trend-value-button" data-value-mode="count" aria-pressed="false">Jumlah Faktur</button>
+          <button type="button" class="trend-value-button active" data-value-mode="currency" aria-pressed="true">Rupiah</button>
+        </div>
+        <div class="dashboard-trend-summary" aria-live="polite">
+          <strong id="trend-total">0</strong>
+          <span id="trend-summary-label">total pembelian</span>
+        </div>
+      </div>
+      <p class="dashboard-trend-status" id="trend-status" aria-live="polite"></p>
+      <div class="dashboard-trend-chart" id="trend-chart"></div>
+      <div class="dashboard-trend-point-detail" id="trend-point-detail" aria-live="polite">
+        Arahkan kursor, fokuskan, atau ketuk titik grafik untuk melihat detail.
+      </div>
+    </section>
   </section>
 
   <!-- SUPPLIER -->
